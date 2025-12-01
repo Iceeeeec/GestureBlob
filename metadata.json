@@ -1,0 +1,7 @@
+{
+  "name": "GestureAgar",
+  "description": "A computer vision-based Agar.io style game controlled by your index finger using MediaPipe and React.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
