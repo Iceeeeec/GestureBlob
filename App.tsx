@@ -2,13 +2,15 @@
 import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { ArchitectureDocs } from './components/ArchitectureDocs';
-import { GameStatus } from './types';
+import { GameStatus, LeaderboardEntry } from './types';
 
 export default function App() {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.LOADING_MODEL);
   const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [rank, setRank] = useState(0);
 
   useEffect(() => {
     const saved = localStorage.getItem('gestureAgar_highScore');
@@ -21,6 +23,17 @@ export default function App() {
       setHighScore(newScore);
       localStorage.setItem('gestureAgar_highScore', newScore.toString());
     }
+  };
+  
+  const handleLeaderboardUpdate = (list: LeaderboardEntry[]) => {
+      setLeaderboard(list);
+      // Calculate Rank (1-based index)
+      const myIndex = list.findIndex(e => e.isPlayer);
+      if (myIndex !== -1) {
+          setRank(myIndex + 1);
+      } else {
+          setRank(0); // Not found (Game Over)
+      }
   };
 
   const toggleGame = () => {
@@ -83,6 +96,7 @@ export default function App() {
                 <GameCanvas 
                   onScoreUpdate={handleScoreUpdate}
                   onStatusChange={setGameStatus}
+                  onLeaderboardUpdate={handleLeaderboardUpdate}
                   gameStatus={gameStatus}
                 />
             </div>
@@ -94,7 +108,7 @@ export default function App() {
                       Mode: AI Arena
                    </div>
                    <div className="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full">
-                      Vision: Hand Landmark
+                      Control: Palm + Gestures
                    </div>
                 </div>
                 
@@ -116,25 +130,51 @@ export default function App() {
 
         {/* Sidebar / HUD */}
         <aside className="w-full lg:w-80 flex flex-col gap-6">
+            
+            {/* Leaderboard */}
+            {gameStatus === GameStatus.PLAYING && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 overflow-hidden">
+                 <h3 className="font-bold text-white mb-3 text-sm uppercase tracking-wider flex items-center justify-between">
+                    Leaderboard
+                    <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">Top 10</span>
+                 </h3>
+                 <div className="space-y-2">
+                    {leaderboard.slice(0, 10).map((entry, idx) => (
+                       <div key={entry.id} className={`flex items-center justify-between text-sm p-2 rounded-lg ${entry.isPlayer ? 'bg-cyan-500/20 border border-cyan-500/30' : 'bg-slate-800/50'}`}>
+                          <div className="flex items-center gap-3">
+                             <span className={`w-5 h-5 flex items-center justify-center text-xs font-bold rounded ${idx < 3 ? 'text-black bg-yellow-400' : 'text-slate-400 bg-slate-700'}`}>
+                                {idx + 1}
+                             </span>
+                             <span className={entry.isPlayer ? 'text-cyan-300 font-bold' : 'text-slate-300'}>{entry.name}</span>
+                          </div>
+                          <span className="font-mono text-slate-400">{entry.mass}</span>
+                       </div>
+                    ))}
+                    {leaderboard.length === 0 && <div className="text-slate-500 text-xs text-center py-2">Waiting for data...</div>}
+                 </div>
+              </div>
+            )}
+
             {/* Score Card */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                 
                 <div className="relative z-10">
-                    <h2 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-1">Current Mass</h2>
+                    <h2 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-1">Total Mass</h2>
                     <div className="text-6xl font-black text-white mb-6 tabular-nums tracking-tighter">
                         {Math.floor(score).toString().padStart(2, '0')}
                     </div>
                     
                     <div className="flex justify-between items-end border-t border-slate-800 pt-4">
                         <div>
-                            <p className="text-xs text-slate-500 uppercase font-semibold">Record Size</p>
+                            <p className="text-xs text-slate-500 uppercase font-semibold">Record</p>
                             <p className="text-2xl font-bold text-cyan-400 tabular-nums">{Math.floor(highScore)}</p>
                         </div>
-                        <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-cyan-500">
-                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                             <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd" />
-                           </svg>
+                        <div className="text-right">
+                             <p className="text-xs text-slate-500 uppercase font-semibold">Rank</p>
+                             <p className="text-2xl font-bold text-yellow-400 tabular-nums">
+                                {rank > 0 ? `#${rank}` : '-'}
+                             </p>
                         </div>
                     </div>
                 </div>
@@ -146,23 +186,29 @@ export default function App() {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    How to Play
+                    Gestures
                 </h3>
                 <ul className="space-y-4 text-sm text-slate-400">
                     <li className="flex gap-3">
                         <span className="w-6 h-6 rounded-full bg-slate-800 text-cyan-400 flex items-center justify-center font-bold text-xs shrink-0">1</span>
-                        <span>Move with <strong>Palm Center</strong> (Open Hand).</span>
-                    </li>
-                    <li className="flex gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-800 text-rose-500 flex items-center justify-center font-bold text-xs shrink-0">2</span>
                         <span>
-                           <strong>Open Hand (Hold)</strong> to eject mass.<br/>
-                           <span className="text-slate-500 text-xs">Extend Middle+Ring+Pinky fully.</span>
+                           <strong>Move</strong><br/>
+                           <span className="text-slate-500 text-xs">Palm Center / Open Hand</span>
                         </span>
                     </li>
                     <li className="flex gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-800 text-yellow-400 flex items-center justify-center font-bold text-xs shrink-0">3</span>
-                        <span>Eat smaller <strong>AI Bots</strong>, avoid bigger ones!</span>
+                        <span className="w-6 h-6 rounded-full bg-slate-800 text-yellow-400 flex items-center justify-center font-bold text-xs shrink-0">2</span>
+                        <span>
+                           <strong>Split (Victory ✌️)</strong><br/>
+                           <span className="text-slate-500 text-xs">Index & Middle UP. Re-merge in 10s.</span>
+                        </span>
+                    </li>
+                    <li className="flex gap-3">
+                        <span className="w-6 h-6 rounded-full bg-slate-800 text-rose-500 flex items-center justify-center font-bold text-xs shrink-0">3</span>
+                        <span>
+                           <strong>Eject (Open Hand 🖐️)</strong><br/>
+                           <span className="text-slate-500 text-xs">Hold open hand to shoot mass.</span>
+                        </span>
                     </li>
                 </ul>
             </div>

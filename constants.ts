@@ -21,6 +21,15 @@ export const EJECT_COOLDOWN_MS = 150;
 export const GESTURE_HOLD_THRESHOLD_MS = 120; // Time to hold open hand before ejecting (Anti-mistouch)
 export const FOOD_FRICTION = 0.94; // Spores slide and slow down
 
+// Split Mechanics
+export const MIN_SPLIT_RADIUS = 35; // Must be this big to split
+export const SPLIT_FORCE = 18; // Impulse speed when splitting
+export const MAX_PLAYER_BLOBS = 8; // Max number of pieces player can split into
+export const MERGE_COOLDOWN_MS = 10000; // Time before cells can merge back (10s)
+export const MERGE_ATTRACTION = 0.01; // How fast cells pull together when merging (0.01 = Slow squeeze)
+export const MERGE_OVERLAP_RATIO = 0.1; // Merge happens when distance < (r1+r2) * 0.1
+export const SELF_COLLISION_PUSH = 0.5; // Force to push overlapping player cells apart
+
 // Physics
 export const BASE_SPEED = 6;
 export const MOVEMENT_SMOOTHING = 0.85; // High value = Very responsive (Palm is stable, so we can reduce lag)

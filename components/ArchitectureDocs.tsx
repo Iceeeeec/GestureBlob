@@ -27,27 +27,40 @@ export const ArchitectureDocs: React.FC<Props> = ({ isOpen, onClose }) => {
         <div className="p-6 overflow-y-auto text-slate-300 space-y-6 leading-relaxed">
           
           <section>
-            <h3 className="text-xl font-semibold text-sky-400 mb-3">1. Core Concept</h3>
+            <h3 className="text-xl font-semibold text-sky-400 mb-3">1. Multi-Blob Player Entity</h3>
             <p className="mb-2">
-              **Gesture Agar** is a computer vision-based "io" style game. The user controls a biological cell (Blob) that consumes smaller cells to grow in size.
-              The core challenge is managing inertia and speed, which decrease as mass increases.
+              The player is no longer a single circle but a collection (Array) of <code>BlobEntity</code> objects. 
+              This enables the <strong>Mitosis (Splitting)</strong> mechanic.
             </p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-slate-400 pl-4">
+               <li><strong>Movement:</strong> All blobs follow the user's hand vector.</li>
+               <li><strong>Camera:</strong> Tracks the <em>Centroid</em> (weighted center) of all player blobs.</li>
+               <li><strong>Self-Collision:</strong> A physics solver iterates through all player blobs and applies a repulsive force if they overlap, creating a realistic "swarm" fluid behavior.</li>
+            </ul>
           </section>
 
           <section>
             <h3 className="text-xl font-semibold text-emerald-400 mb-3">2. Gesture Control System</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-800 p-4 rounded-lg">
-                <h4 className="font-bold text-white mb-2">Vector Control</h4>
-                <p className="text-sm">
-                  We use a <strong>Directional Vector</strong> approach from the <em>Screen Center</em> to the <strong>Palm Center (Middle MCP)</strong>.
-                  This ensures stable, jitter-free control compared to fingertip tracking.
+                <h4 className="font-bold text-white mb-2">Palm Movement</h4>
+                <p className="text-xs">
+                   Tracks Landmark 9 (Middle MCP). 
+                   Stable base for continuous movement.
                 </p>
               </div>
               <div className="bg-slate-800 p-4 rounded-lg">
-                <h4 className="font-bold text-white mb-2">Smoothing & Sensitivity</h4>
-                <p className="text-sm">
-                  Since palm tracking is stable, we use high <strong>Exponential Moving Average (EMA)</strong> factors for near-instant responsiveness, with high sensitivity to allow full speed with minimal hand movement.
+                <h4 className="font-bold text-yellow-400 mb-2">Victory (Split)</h4>
+                <p className="text-xs">
+                  <strong>Index & Middle Extended</strong>. Ring & Pinky Curled.
+                  Triggers cell division with impulse boost.
+                </p>
+              </div>
+              <div className="bg-slate-800 p-4 rounded-lg">
+                <h4 className="font-bold text-rose-400 mb-2">Open Hand (Eject)</h4>
+                <p className="text-xs">
+                  <strong>Middle, Ring, Pinky Extended</strong>.
+                  Shoots mass to bait enemies or speed up.
                 </p>
               </div>
             </div>
@@ -60,25 +73,16 @@ export const ArchitectureDocs: React.FC<Props> = ({ isOpen, onClose }) => {
                 <span className="font-mono text-xs bg-slate-700 px-2 py-1 rounded h-fit">MASS</span>
                 <span>
                   Movement speed is inversely proportional to radius: <code>Speed = BaseSpeed * (Radius ^ -0.4)</code>.
-                  This simulates the physics of heavy objects moving slower.
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="font-mono text-xs bg-slate-700 px-2 py-1 rounded h-fit">EAT</span>
+                <span className="font-mono text-xs bg-slate-700 px-2 py-1 rounded h-fit">SPLIT</span>
                 <span>
-                  <strong>Collision Detection:</strong> Checks if <code>Distance(Player, Food) &lt; PlayerRadius</code>.
-                  <strong>Growth:</strong> Area-based growth. <code>NewRadius = sqrt(OldRadius^2 + FoodArea)</code>. This ensures realistic mass conservation.
+                  When splitting, new cells inherit current velocity + a directional impulse vector (Force 18).
+                  Mass is conserved: <code>Area_New = Area_Old / 2</code>.
                 </span>
               </li>
             </ul>
-          </section>
-
-          <section>
-            <h3 className="text-xl font-semibold text-orange-400 mb-3">4. Rendering & Effects</h3>
-            <p>
-              The player cell is rendered with a <strong>dynamic sine-wave distortion</strong> on its circumference to mimic a breathing, wobbling biological organism.
-              The background grid moves via parallax scrolling to convey speed and scale in the infinite world.
-            </p>
           </section>
 
         </div>

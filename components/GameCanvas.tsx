@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, HandLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
-import { GameStatus, Point, Particle, BlobEntity, Camera } from '../types';
+import { GameStatus, Point, Particle, BlobEntity, Camera, LeaderboardEntry } from '../types';
 import { 
   INITIAL_PLAYER_RADIUS,
   MIN_FOOD_RADIUS,
@@ -27,18 +27,27 @@ import {
   BOT_NAMES,
   BOT_VIEW_DISTANCE,
   GESTURE_HOLD_THRESHOLD_MS,
-  PLAYER_TURN_SPEED
+  PLAYER_TURN_SPEED,
+  MIN_SPLIT_RADIUS,
+  SPLIT_FORCE,
+  MAX_PLAYER_BLOBS,
+  MERGE_COOLDOWN_MS,
+  SELF_COLLISION_PUSH,
+  MERGE_ATTRACTION,
+  MERGE_OVERLAP_RATIO
 } from '../constants';
 
 interface GameCanvasProps {
   onScoreUpdate: (score: number) => void;
   onStatusChange: (status: GameStatus) => void;
+  onLeaderboardUpdate: (leaderboard: LeaderboardEntry[]) => void;
   gameStatus: GameStatus;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ 
   onScoreUpdate, 
-  onStatusChange, 
+  onStatusChange,
+  onLeaderboardUpdate,
   gameStatus 
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -49,16 +58,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const requestRef = useRef<number>(0);
   
   // Game State Refs
-  const playerRef = useRef<BlobEntity>({ 
-    id: 'player', 
-    x: 0, 
-    y: 0, 
-    radius: INITIAL_PLAYER_RADIUS, 
-    color: COLOR_PLAYER_CORE,
-    vx: 0,
-    vy: 0,
-    name: 'You'
-  });
+  // Player is now an array of blobs
+  const playerRef = useRef<BlobEntity[]>([]);
   
   const foodsRef = useRef<BlobEntity[]>([]);
   const botsRef = useRef<BlobEntity[]>([]);
@@ -68,6 +69,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const scoreRef = useRef<number>(0);
   const timeRef = useRef<number>(0); // For wobble animation
   const lastEjectTimeRef = useRef<number>(0);
+  const lastSplitTimeRef = useRef<number>(0);
   const gestureHoldStartRef = useRef<number>(0);
   
   // Audio Refs
@@ -122,6 +124,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
     osc.start();
     osc.stop(ctx.currentTime + 0.15);
+  };
+
+  const playSplitSound = () => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(300, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(600, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
   };
 
   const playPopSound = () => {
@@ -209,7 +227,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       stopBGM();
       if (audioCtxRef.current) audioCtxRef.current.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startCamera = async () => {
@@ -258,8 +275,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const spawnBots = (count: number) => {
     for (let i = 0; i < count; i++) {
        const startRadius = INITIAL_PLAYER_RADIUS * (0.8 + Math.random() * 0.8);
+       // FIX: Use unique ID to prevent React rendering issues when bots respawn
+       const uniqueId = `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
        botsRef.current.push({
-           id: `bot-${i}`,
+           id: uniqueId,
            x: Math.random() * WORLD_WIDTH,
            y: Math.random() * WORLD_HEIGHT,
            radius: startRadius,
@@ -267,7 +286,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
            vx: (Math.random() - 0.5) * 2,
            vy: (Math.random() - 0.5) * 2,
            isBot: true,
-           name: BOT_NAMES[i % BOT_NAMES.length]
+           name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]
        });
     }
   };
@@ -287,49 +306,84 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   };
 
-  const ejectSpore = (source: BlobEntity) => {
-    if (source.radius < MIN_EJECT_RADIUS) return;
-    
-    // Calculate direction (towards movement or forward)
-    let angle = 0;
-    const speed = Math.hypot(source.vx, source.vy);
-    if (speed > 0.5) {
-        angle = Math.atan2(source.vy, source.vx);
-    } else {
-        // Random if still
-        angle = Math.random() * Math.PI * 2; 
-    }
+  const ejectSpore = () => {
+    let ejected = false;
+    // Iterate backwards to allow modifying array if needed (though we just modify radius)
+    playerRef.current.forEach(blob => {
+       if (blob.radius < MIN_EJECT_RADIUS) return;
 
-    // Conservation of Area
-    const newAreaSq = source.radius * source.radius - SPORE_RADIUS * SPORE_RADIUS;
-    source.radius = Math.sqrt(newAreaSq);
-    
-    if (source.id === 'player') {
-        scoreRef.current = source.radius;
-        onScoreUpdate(source.radius);
-    }
+       // Direction
+       let angle = 0;
+       const speed = Math.hypot(blob.vx, blob.vy);
+       if (speed > 0.5) {
+           angle = Math.atan2(blob.vy, blob.vx);
+       } else {
+           angle = Math.random() * Math.PI * 2; 
+       }
 
-    // Create Spore
-    const startDist = source.radius + SPORE_RADIUS + 5;
-    const spore: BlobEntity = {
-        id: `spore-${Date.now()}-${Math.random()}`,
-        x: source.x + Math.cos(angle) * startDist,
-        y: source.y + Math.sin(angle) * startDist,
-        vx: Math.cos(angle) * SPORE_SPEED,
-        vy: Math.sin(angle) * SPORE_SPEED,
-        radius: SPORE_RADIUS,
-        color: source.color
-    };
+       const newAreaSq = blob.radius * blob.radius - SPORE_RADIUS * SPORE_RADIUS;
+       blob.radius = Math.sqrt(newAreaSq);
+
+       const startDist = blob.radius + SPORE_RADIUS + 5;
+       const spore: BlobEntity = {
+           id: `spore-${Date.now()}-${Math.random()}`,
+           x: blob.x + Math.cos(angle) * startDist,
+           y: blob.y + Math.sin(angle) * startDist,
+           vx: Math.cos(angle) * SPORE_SPEED,
+           vy: Math.sin(angle) * SPORE_SPEED,
+           radius: SPORE_RADIUS,
+           color: blob.color
+       };
+       foodsRef.current.push(spore);
+       ejected = true;
+    });
     
-    foodsRef.current.push(spore);
-    if (source.id === 'player') playShootSound();
+    if (ejected) playShootSound();
+  };
+
+  const splitPlayer = (angle: number) => {
+      const currentBlobs = playerRef.current;
+      if (currentBlobs.length >= MAX_PLAYER_BLOBS) return;
+      
+      const newBlobs: BlobEntity[] = [];
+      let didSplit = false;
+
+      currentBlobs.forEach(blob => {
+          if (blob.radius >= MIN_SPLIT_RADIUS && (playerRef.current.length + newBlobs.length) < MAX_PLAYER_BLOBS) {
+              // Halve Area: New Radius = Old Radius / sqrt(2)
+              const newRadius = blob.radius / Math.SQRT2;
+              blob.radius = newRadius;
+              
+              const splitBlob: BlobEntity = {
+                  ...blob,
+                  id: `player-${Date.now()}-${Math.random()}`,
+                  radius: newRadius,
+                  // Add Impulse
+                  vx: blob.vx + Math.cos(angle) * SPLIT_FORCE,
+                  vy: blob.vy + Math.sin(angle) * SPLIT_FORCE,
+                  mergeTimestamp: Date.now() + MERGE_COOLDOWN_MS
+              };
+              
+              // Shift position slightly forward so they don't start inside each other
+              splitBlob.x += Math.cos(angle) * (newRadius * 2);
+              splitBlob.y += Math.sin(angle) * (newRadius * 2);
+
+              newBlobs.push(splitBlob);
+              didSplit = true;
+          }
+      });
+      
+      if (didSplit) {
+          playerRef.current = [...currentBlobs, ...newBlobs];
+          playSplitSound();
+      }
   };
 
   const resetGame = () => {
     const cx = WORLD_WIDTH / 2;
     const cy = WORLD_HEIGHT / 2;
-    playerRef.current = {
-        id: 'player',
+    playerRef.current = [{
+        id: 'player-0',
         x: cx,
         y: cy,
         radius: INITIAL_PLAYER_RADIUS,
@@ -337,7 +391,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         vx: 0,
         vy: 0,
         name: 'You'
-    };
+    }];
     scoreRef.current = INITIAL_PLAYER_RADIUS;
     onScoreUpdate(INITIAL_PLAYER_RADIUS);
     particlesRef.current = [];
@@ -361,21 +415,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
   };
 
+  const getCentroid = (blobs: BlobEntity[]): Point => {
+      if (blobs.length === 0) return { x: 0, y: 0 };
+      let tx = 0, ty = 0, mass = 0;
+      blobs.forEach(b => {
+          tx += b.x * b.radius;
+          ty += b.y * b.radius;
+          mass += b.radius;
+      });
+      return { x: tx / mass, y: ty / mass };
+  };
+
   // --- Helper: Gesture Detection ---
   const isFingerExtended = (landmarks: NormalizedLandmark[], tipIdx: number, pipIdx: number, wristIdx: number) => {
     const wrist = landmarks[wristIdx];
     const pip = landmarks[pipIdx];
     const tip = landmarks[tipIdx];
-    
     const dWristPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
     const dWristTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-    
-    // Tip must be significantly further from wrist than PIP
     return dWristTip > dWristPip * 1.2;
   };
 
   // --- AI Logic ---
   const updateBots = () => {
+    const playerCentroid = getCentroid(playerRef.current);
+    const playerTotalMass = playerRef.current.reduce((sum, b) => sum + b.radius, 0);
+
     botsRef.current.forEach(bot => {
         // 1. Find Targets (Food or smaller entities)
         let targetX = bot.x;
@@ -393,18 +458,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
         });
 
-        // Scan Player (Prey or Predator)
-        const dPlayer = Math.hypot(playerRef.current.x - bot.x, playerRef.current.y - bot.y);
+        // Scan Player (Simple check against centroid)
+        const dPlayer = Math.hypot(playerCentroid.x - bot.x, playerCentroid.y - bot.y);
         if (dPlayer < BOT_VIEW_DISTANCE) {
-            if (playerRef.current.radius > bot.radius * 1.1) {
-                // Flee
-                dangerVector.x += (bot.x - playerRef.current.x) / dPlayer * 200;
-                dangerVector.y += (bot.y - playerRef.current.y) / dPlayer * 200;
-            } else if (playerRef.current.radius < bot.radius * 0.9) {
-                // Chase
-                if (dPlayer < minDist) {
+            // Flee from player if player is bigger
+            // We compare total mass approx or largest blob
+            const maxPlayerBlob = Math.max(...playerRef.current.map(b => b.radius));
+            if (maxPlayerBlob > bot.radius * 1.1) {
+                dangerVector.x += (bot.x - playerCentroid.x) / dPlayer * 200;
+                dangerVector.y += (bot.y - playerCentroid.y) / dPlayer * 200;
+            } else if (maxPlayerBlob < bot.radius * 0.9) {
+                 if (dPlayer < minDist) {
                     minDist = dPlayer;
-                    bestTarget = playerRef.current;
+                    bestTarget = { x: playerCentroid.x, y: playerCentroid.y, radius: maxPlayerBlob } as BlobEntity;
                 }
             }
         }
@@ -420,127 +486,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              angle = Math.atan2(bot.vy, bot.vx) + (Math.random() - 0.5) * 0.5;
         }
 
-        // Speed calculation
-        const speedFactor = BASE_SPEED * (25 / Math.max(25, bot.radius)) ** 0.5 * 0.8; // Bots slightly slower
+        const speedFactor = BASE_SPEED * (25 / Math.max(25, bot.radius)) ** 0.5 * 0.8;
         const tx = Math.cos(angle) * speedFactor;
         const ty = Math.sin(angle) * speedFactor;
-
         bot.vx += (tx - bot.vx) * 0.05;
         bot.vy += (ty - bot.vy) * 0.05;
-
-        // Move
         bot.x += bot.vx;
         bot.y += bot.vy;
-
-        // Boundaries
         bot.x = Math.max(bot.radius, Math.min(WORLD_WIDTH - bot.radius, bot.x));
         bot.y = Math.max(bot.radius, Math.min(WORLD_HEIGHT - bot.radius, bot.y));
     });
   };
 
-  useEffect(() => {
-    if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    if (gameStatus === GameStatus.PLAYING) {
-      startBGM();
-      resetGame();
-      requestRef.current = requestAnimationFrame(animate);
-    } else {
-      stopBGM();
-      if (gameStatus === GameStatus.IDLE || gameStatus === GameStatus.GAME_OVER) {
-         requestRef.current = requestAnimationFrame(animatePreview);
-      }
-    }
-    return () => {
-        if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameStatus]);
+  // --- Leaderboard ---
+  const updateLeaderboard = () => {
+      // Calculate Player Mass
+      let playerMass = 0;
+      playerRef.current.forEach(b => playerMass += b.radius);
 
-  // --- Render Loops ---
-  const animatePreview = () => {
-    if (gameStatus === GameStatus.IDLE || gameStatus === GameStatus.GAME_OVER) {
-        requestRef.current = requestAnimationFrame(animatePreview);
-    }
-    if (!canvasRef.current || !videoRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-    if (videoRef.current.readyState < 2) return;
+      // Create list
+      const entries: LeaderboardEntry[] = [
+          { id: 'player', name: 'You', mass: Math.floor(playerMass), isPlayer: true }
+      ];
 
-    ctx.save();
-    ctx.translate(canvasRef.current.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-    ctx.restore();
+      botsRef.current.forEach(bot => {
+          entries.push({ id: bot.id, name: bot.name || 'Bot', mass: Math.floor(bot.radius), isPlayer: false });
+      });
 
-    if (gameStatus === GameStatus.GAME_OVER) {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
-        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 64px "Inter", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText("GAME OVER", canvasRef.current.width / 2, canvasRef.current.height / 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '24px "Inter", sans-serif';
-        ctx.fillText(`Final Size: ${Math.floor(scoreRef.current)}`, canvasRef.current.width / 2, canvasRef.current.height / 2 + 50);
-    }
+      // Sort
+      entries.sort((a, b) => b.mass - a.mass);
+      
+      // Update UI with FULL list, let UI handle slicing and rank calculation
+      onLeaderboardUpdate(entries);
   };
 
-  const drawBlob = (ctx: CanvasRenderingContext2D, blob: BlobEntity, isPlayer: boolean) => {
-    ctx.beginPath();
-    const segments = 20;
-    const time = timeRef.current;
-    
-    // Organic wobble for players and bots
-    if (blob.radius > 10) {
-        for (let i = 0; i <= segments; i++) {
-            const theta = (i / segments) * Math.PI * 2;
-            const distortion = Math.sin(theta * 6 + time * 0.1 + (blob.x * 0.01)) * (blob.radius * 0.03);
-            const r = blob.radius + distortion;
-            const px = blob.x + Math.cos(theta) * r;
-            const py = blob.y + Math.sin(theta) * r;
-            // Convert to screen coords here for drawing
-            const sp = worldToScreen(px, py);
-            if (i === 0) ctx.moveTo(sp.x, sp.y);
-            else ctx.lineTo(sp.x, sp.y);
-        }
-    } else {
-        const sp = worldToScreen(blob.x, blob.y);
-        ctx.arc(sp.x, sp.y, blob.radius, 0, Math.PI * 2);
-    }
-    
-    ctx.closePath();
-    ctx.fillStyle = blob.color;
-    ctx.fill();
-    
-    const spCenter = worldToScreen(blob.x, blob.y);
-    
-    // Border
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = isPlayer ? COLOR_PLAYER_BORDER : 'rgba(0,0,0,0.3)';
-    ctx.stroke();
-
-    // Shine
-    if (blob.radius > 8) {
-        ctx.beginPath();
-        ctx.arc(spCenter.x - blob.radius * 0.3, spCenter.y - blob.radius * 0.3, blob.radius * 0.2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.fill();
-    }
-
-    // Name
-    if (blob.name && blob.radius > 15) {
-        ctx.fillStyle = 'white';
-        ctx.font = `bold ${Math.max(10, blob.radius * 0.4)}px "Inter"`;
-        ctx.textAlign = 'center';
-        ctx.fillText(blob.name, spCenter.x, spCenter.y + 4);
-    }
-  };
-
-  const checkCollision = (a: BlobEntity, b: BlobEntity) => {
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      return dist < a.radius - b.radius * 0.2; // Eat if significantly overlapping
-  };
-
+  // --- Main Loop ---
   const animate = () => {
     if (gameStatus === GameStatus.PLAYING) {
       requestRef.current = requestAnimationFrame(animate);
@@ -553,22 +533,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const ch = canvas.height;
     
     timeRef.current += 1;
+    
+    // Update Leaderboard every 15 frames
+    if (timeRef.current % 15 === 0) updateLeaderboard();
 
     // --- 1. INPUT ---
     const startTimeMs = performance.now();
-    let targetVx = 0;
-    let targetVy = 0;
+    let targetAngle = 0;
+    let throttle = 0;
     let hasHand = false;
-    let isSpreadingHand = false;
+    let gestureType: 'NONE' | 'EJECT' | 'SPLIT' = 'NONE';
 
     try {
         const results = handLandmarkerRef.current.detectForVideo(videoRef.current, startTimeMs);
         if (results.landmarks && results.landmarks.length > 0) {
             hasHand = true;
             const landmarks = results.landmarks[0];
-            
-            // TRACKING: Use Palm Center (Landmark 9 - Middle Finger MCP)
-            // This is much more stable than Index Tip (8) for movement control
             const palmCenter = landmarks[9]; 
             
             const rawX = (1 - palmCenter.x) * cw;
@@ -578,98 +558,198 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 y: lastFingerPosRef.current.y + (rawY - lastFingerPosRef.current.y) * MOVEMENT_SMOOTHING
             };
 
-            // Gesture: Detect Spread Hand for Ejecting
-            // Middle+Ring+Pinky must be extended for Eject
-            const midExt = isFingerExtended(landmarks, 12, 10, 0); // Middle
-            const ringExt = isFingerExtended(landmarks, 16, 14, 0); // Ring
-            const pinkyExt = isFingerExtended(landmarks, 20, 18, 0); // Pinky
+            // Detect Gestures
+            const indexExt = isFingerExtended(landmarks, 8, 6, 0);
+            const midExt = isFingerExtended(landmarks, 12, 10, 0);
+            const ringExt = isFingerExtended(landmarks, 16, 14, 0);
+            const pinkyExt = isFingerExtended(landmarks, 20, 18, 0);
 
-            // Logic: If Middle, Ring AND Pinky are open, it is "Open Hand".
-            if (midExt && ringExt && pinkyExt) {
-                // Debounce
-                if (gestureHoldStartRef.current === 0) {
-                    gestureHoldStartRef.current = Date.now();
-                } else if (Date.now() - gestureHoldStartRef.current > GESTURE_HOLD_THRESHOLD_MS) {
-                    isSpreadingHand = true;
-                }
-            } else {
-                gestureHoldStartRef.current = 0;
+            if (indexExt && midExt && !ringExt && !pinkyExt) {
+                // Victory / Scissors -> SPLIT
+                gestureType = 'SPLIT';
+            } else if (midExt && ringExt && pinkyExt) {
+                // Open Hand -> EJECT
+                gestureType = 'EJECT';
             }
-
-            // Calculate Vector from Center to Hand
+            
+            // Vector Calculation
             const cx = cw / 2;
             const cy = ch / 2;
             const dx = lastFingerPosRef.current.x - cx;
             const dy = lastFingerPosRef.current.y - cy;
             const dist = Math.hypot(dx, dy);
-            
-            // Throttle control
-            const throttle = Math.min(dist / INPUT_MAX_SPEED_DISTANCE, 1.0);
-            const angle = Math.atan2(dy, dx);
-            const speedFactor = BASE_SPEED * (25 / Math.max(25, playerRef.current.radius)) ** 0.5;
-            targetVx = Math.cos(angle) * speedFactor * throttle;
-            targetVy = Math.sin(angle) * speedFactor * throttle;
-        } else {
-            gestureHoldStartRef.current = 0;
+            throttle = Math.min(dist / INPUT_MAX_SPEED_DISTANCE, 1.0);
+            targetAngle = Math.atan2(dy, dx);
         }
     } catch(e) {}
 
-    // Handle Ejection
+    // Debounce & Trigger Actions
     const now = Date.now();
-    if (isSpreadingHand && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
-        ejectSpore(playerRef.current);
-        lastEjectTimeRef.current = now;
+    if (gestureType !== 'NONE') {
+        if (gestureHoldStartRef.current === 0) {
+            gestureHoldStartRef.current = now;
+        } else if (now - gestureHoldStartRef.current > GESTURE_HOLD_THRESHOLD_MS) {
+            if (gestureType === 'EJECT' && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
+                ejectSpore();
+                lastEjectTimeRef.current = now;
+            } else if (gestureType === 'SPLIT' && now - lastSplitTimeRef.current > 500) {
+                // Split Action
+                splitPlayer(targetAngle);
+                lastSplitTimeRef.current = now;
+            }
+        }
+    } else {
+        gestureHoldStartRef.current = 0;
     }
 
     // --- 2. PHYSICS ---
-    const player = playerRef.current;
     
-    // Player Movement (Inertia)
-    player.vx += (targetVx - player.vx) * PLAYER_TURN_SPEED; // Use higher turn speed
-    player.vy += (targetVy - player.vy) * PLAYER_TURN_SPEED;
-    player.x += player.vx;
-    player.y += player.vy;
-    player.x = Math.max(player.radius, Math.min(WORLD_WIDTH - player.radius, player.x));
-    player.y = Math.max(player.radius, Math.min(WORLD_HEIGHT - player.radius, player.y));
+    // Player Movement (Multi-blob)
+    playerRef.current.forEach(blob => {
+        // Target velocity
+        const speedFactor = BASE_SPEED * (25 / Math.max(25, blob.radius)) ** 0.5;
+        const tvx = Math.cos(targetAngle) * speedFactor * throttle;
+        const tvy = Math.sin(targetAngle) * speedFactor * throttle;
+        
+        blob.vx += (tvx - blob.vx) * PLAYER_TURN_SPEED;
+        blob.vy += (tvy - blob.vy) * PLAYER_TURN_SPEED;
+        blob.x += blob.vx;
+        blob.y += blob.vy;
 
-    // Bot Movement
+        // Wall Boundaries
+        if (blob.x < blob.radius) { blob.x = blob.radius; blob.vx *= -0.5; }
+        if (blob.x > WORLD_WIDTH - blob.radius) { blob.x = WORLD_WIDTH - blob.radius; blob.vx *= -0.5; }
+        if (blob.y < blob.radius) { blob.y = blob.radius; blob.vy *= -0.5; }
+        if (blob.y > WORLD_HEIGHT - blob.radius) { blob.y = WORLD_HEIGHT - blob.radius; blob.vy *= -0.5; }
+    });
+
+    // Resolve Self-Collision & Merging
+    for (let i = 0; i < playerRef.current.length; i++) {
+        for (let j = i + 1; j < playerRef.current.length; j++) {
+            const b1 = playerRef.current[i];
+            const b2 = playerRef.current[j];
+            const dx = b2.x - b1.x;
+            const dy = b2.y - b1.y;
+            const dist = Math.hypot(dx, dy);
+            const radSum = b1.radius + b2.radius;
+            
+            if (dist < radSum) {
+                // Check Re-merge capabilities
+                // Merging happens if cooldown expired AND they are overlapping significantly
+                const canMerge = (!b1.mergeTimestamp || b1.mergeTimestamp < now) && 
+                                 (!b2.mergeTimestamp || b2.mergeTimestamp < now);
+                
+                // Merge Logic (Slow Squeeze)
+                if (canMerge) {
+                     // 1. Attraction Force (Pull together based on mass)
+                     // Heavier blob moves less, lighter moves more to preserve centroid roughly
+                     const invMass1 = 1 / b1.radius;
+                     const invMass2 = 1 / b2.radius;
+                     const totalInvMass = invMass1 + invMass2;
+                     
+                     // How much to move? Proportional to distance, scaled by ATTRACTION
+                     const moveX = dx * MERGE_ATTRACTION;
+                     const moveY = dy * MERGE_ATTRACTION;
+                     
+                     // Weighted movement
+                     b1.x += moveX * (invMass1 / totalInvMass);
+                     b1.y += moveY * (invMass1 / totalInvMass);
+                     b2.x -= moveX * (invMass2 / totalInvMass);
+                     b2.y -= moveY * (invMass2 / totalInvMass);
+
+                     // 2. Final Merge Trigger
+                     // Only actually merge if they are very close (concentric)
+                     if (dist < radSum * MERGE_OVERLAP_RATIO) {
+                        // Conserve Mass (Area)
+                        const newArea = b1.radius * b1.radius + b2.radius * b2.radius;
+                        const newRadius = Math.sqrt(newArea);
+                        
+                        // Blend Velocity
+                        const r1Sq = b1.radius * b1.radius;
+                        const r2Sq = b2.radius * b2.radius;
+                        const totalArea = r1Sq + r2Sq;
+
+                        b1.vx = (b1.vx * r1Sq + b2.vx * r2Sq) / totalArea;
+                        b1.vy = (b1.vy * r1Sq + b2.vy * r2Sq) / totalArea;
+                        b1.radius = newRadius;
+                        
+                        // Position is naturally blended by the squeeze, but let's snap to weighted center
+                        b1.x = (b1.x * r1Sq + b2.x * r2Sq) / totalArea;
+                        b1.y = (b1.y * r1Sq + b2.y * r2Sq) / totalArea;
+
+                        // Remove b2
+                        playerRef.current.splice(j, 1);
+                        j--; 
+                        playEatSound(newRadius);
+                     }
+                     
+                     // Skip Repulsion Force if merging
+                     continue;
+                }
+
+                // If not merging, push apart (Cell membrane tension)
+                if (dist > 0) {
+                    const overlap = radSum - dist;
+                    // Stronger push if closer, but capped to avoid explosion
+                    const push = Math.min(overlap, 4.0) * SELF_COLLISION_PUSH;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    
+                    b1.x -= nx * push;
+                    b1.y -= ny * push;
+                    b2.x += nx * push;
+                    b2.y += ny * push;
+                }
+            }
+        }
+    }
+
     updateBots();
 
-    // Food/Spore Physics (Friction)
+    // Food Physics
     for (let food of foodsRef.current) {
         if (Math.abs(food.vx) > 0.1 || Math.abs(food.vy) > 0.1) {
             food.x += food.vx;
             food.y += food.vy;
             food.vx *= FOOD_FRICTION;
             food.vy *= FOOD_FRICTION;
-            
-            // Bounce off walls
             if (food.x < 0 || food.x > WORLD_WIDTH) food.vx *= -1;
             if (food.y < 0 || food.y > WORLD_HEIGHT) food.vy *= -1;
         }
     }
 
-    // Camera Follow
-    const targetCamX = player.x - cw / 2;
-    const targetCamY = player.y - ch / 2;
-    cameraRef.current.x += (targetCamX - cameraRef.current.x) * 0.1;
-    cameraRef.current.y += (targetCamY - cameraRef.current.y) * 0.1;
+    // Camera Follow Centroid
+    const center = getCentroid(playerRef.current);
+    if (playerRef.current.length === 0) {
+        // If dead, keep camera roughly where we died
+    } else {
+        const targetCamX = center.x - cw / 2;
+        const targetCamY = center.y - ch / 2;
+        cameraRef.current.x += (targetCamX - cameraRef.current.x) * 0.1;
+        cameraRef.current.y += (targetCamY - cameraRef.current.y) * 0.1;
+    }
 
     // --- 3. COLLISION ---
-    
-    // 3.1 Player vs Food
-    for (let i = foodsRef.current.length - 1; i >= 0; i--) {
-        const food = foodsRef.current[i];
-        if (checkCollision(player, food)) {
-             const newAreaRadius = Math.sqrt(player.radius * player.radius + (food.radius * food.radius) * GROWTH_FACTOR);
-             player.radius = newAreaRadius;
-             scoreRef.current += Math.floor(food.radius);
-             onScoreUpdate(scoreRef.current);
-             playEatSound(player.radius);
-             spawnParticles(food.x, food.y, food.color);
-             foodsRef.current.splice(i, 1);
+
+    // 3.1 Player vs Food (Check all blobs)
+    playerRef.current.forEach(blob => {
+        for (let i = foodsRef.current.length - 1; i >= 0; i--) {
+            const food = foodsRef.current[i];
+            if (checkCollision(blob, food)) {
+                const newAreaRadius = Math.sqrt(blob.radius * blob.radius + (food.radius * food.radius) * GROWTH_FACTOR);
+                blob.radius = newAreaRadius;
+                // Score is total mass now
+                let totalScore = 0;
+                playerRef.current.forEach(b => totalScore += b.radius);
+                scoreRef.current = totalScore;
+                onScoreUpdate(scoreRef.current);
+                
+                playEatSound(blob.radius);
+                spawnParticles(food.x, food.y, food.color);
+                foodsRef.current.splice(i, 1);
+            }
         }
-    }
+    });
 
     // 3.2 Bots vs Food
     botsRef.current.forEach(bot => {
@@ -686,23 +766,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     for (let i = botsRef.current.length - 1; i >= 0; i--) {
         const bot = botsRef.current[i];
         
+        let botEaten = false;
         // Player Eats Bot
-        if (player.radius > bot.radius * 1.1 && checkCollision(player, bot)) {
-            player.radius = Math.sqrt(player.radius * player.radius + (bot.radius * bot.radius));
-            scoreRef.current += Math.floor(bot.radius * 2);
-            onScoreUpdate(scoreRef.current);
-            playPopSound();
-            spawnParticles(bot.x, bot.y, bot.color, 12);
-            botsRef.current.splice(i, 1);
-            spawnBots(1); // Respawn new bot somewhere else
-            continue;
-        }
+        for (let b = 0; b < playerRef.current.length; b++) {
+            const pBlob = playerRef.current[b];
+            if (pBlob.radius > bot.radius * 1.1 && checkCollision(pBlob, bot)) {
+                pBlob.radius = Math.sqrt(pBlob.radius * pBlob.radius + (bot.radius * bot.radius));
+                
+                // Update Score
+                let totalScore = 0;
+                playerRef.current.forEach(cell => totalScore += cell.radius);
+                scoreRef.current = totalScore;
+                onScoreUpdate(scoreRef.current);
 
-        // Bot Eats Player
-        if (bot.radius > player.radius * 1.1 && checkCollision(bot, player)) {
-             onStatusChange(GameStatus.GAME_OVER);
-             playPopSound();
+                playPopSound();
+                spawnParticles(bot.x, bot.y, bot.color, 12);
+                botsRef.current.splice(i, 1);
+                spawnBots(1); 
+                botEaten = true;
+                break; 
+            }
         }
+        if (botEaten) continue;
+
+        // Bot Eats Player (Check all player blobs)
+        for (let b = playerRef.current.length - 1; b >= 0; b--) {
+            const pBlob = playerRef.current[b];
+            if (bot.radius > pBlob.radius * 1.1 && checkCollision(bot, pBlob)) {
+                // Bot eats this specific player blob
+                bot.radius = Math.sqrt(bot.radius * bot.radius + pBlob.radius * pBlob.radius);
+                playerRef.current.splice(b, 1);
+                playPopSound();
+            }
+        }
+    }
+
+    // Check Game Over
+    if (playerRef.current.length === 0 && gameStatus === GameStatus.PLAYING) {
+        onStatusChange(GameStatus.GAME_OVER);
     }
 
     // 3.4 Bot vs Bot
@@ -766,9 +867,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     // Food
     foodsRef.current.forEach(food => {
         const sp = worldToScreen(food.x, food.y);
-        // Culling
         if (sp.x > -50 && sp.x < cw + 50 && sp.y > -50 && sp.y < ch + 50) {
-            // Draw simple circle for food
             ctx.beginPath();
             ctx.arc(sp.x, sp.y, food.radius, 0, Math.PI * 2);
             ctx.fillStyle = food.color;
@@ -792,37 +891,154 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         drawBlob(ctx, bot, false);
     });
 
-    // Player
-    drawBlob(ctx, player, true);
+    // Player (Draw all blobs)
+    playerRef.current.forEach(blob => {
+        drawBlob(ctx, blob, true);
+    });
 
-    // Control Line
+    // Control Line & Hand Visuals
     if (hasHand) {
         const fPos = lastFingerPosRef.current;
-        const center = { x: cw/2, y: ch/2 };
+        const screenCenter = { x: cw/2, y: ch/2 };
+        
         ctx.beginPath();
-        ctx.moveTo(center.x, center.y);
+        ctx.moveTo(screenCenter.x, screenCenter.y);
         ctx.lineTo(fPos.x, fPos.y);
-        ctx.strokeStyle = isSpreadingHand ? 'rgba(244, 63, 94, 0.6)' : 'rgba(34, 211, 238, 0.3)';
-        ctx.lineWidth = isSpreadingHand ? 4 : 2;
+        
+        let color = 'rgba(34, 211, 238, 0.3)';
+        if (gestureType === 'EJECT') color = 'rgba(244, 63, 94, 0.6)';
+        if (gestureType === 'SPLIT') color = 'rgba(250, 204, 21, 0.6)';
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = gestureType === 'NONE' ? 2 : 4;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
         
         // Palm Cursor Visualization
         ctx.beginPath();
-        ctx.arc(fPos.x, fPos.y, 16, 0, Math.PI*2); // Larger circle for palm
-        ctx.fillStyle = isSpreadingHand ? 'rgba(244, 63, 94, 0.3)' : 'rgba(34, 211, 238, 0.2)';
+        ctx.arc(fPos.x, fPos.y, 16, 0, Math.PI*2);
+        
+        let fillColor = 'rgba(34, 211, 238, 0.2)';
+        if (gestureType === 'EJECT') fillColor = 'rgba(244, 63, 94, 0.3)';
+        if (gestureType === 'SPLIT') fillColor = 'rgba(250, 204, 21, 0.3)';
+        
+        ctx.fillStyle = fillColor;
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = isSpreadingHand ? '#f43f5e' : 'rgba(34, 211, 238, 0.8)';
+        ctx.strokeStyle = color.replace('0.6', '0.8').replace('0.3', '0.8');
         ctx.stroke();
         
-        if (isSpreadingHand) {
+        if (gestureType === 'EJECT') {
              ctx.fillStyle = '#f43f5e';
              ctx.font = 'bold 12px "Inter"';
              ctx.textAlign = 'center';
              ctx.fillText('EJECT', fPos.x, fPos.y - 26);
+        } else if (gestureType === 'SPLIT') {
+             ctx.fillStyle = '#facc15';
+             ctx.font = 'bold 12px "Inter"';
+             ctx.textAlign = 'center';
+             ctx.fillText('SPLIT', fPos.x, fPos.y - 26);
         }
+    }
+  };
+
+  const drawBlob = (ctx: CanvasRenderingContext2D, blob: BlobEntity, isPlayer: boolean) => {
+    ctx.beginPath();
+    const segments = 20;
+    const time = timeRef.current;
+    
+    if (blob.radius > 10) {
+        for (let i = 0; i <= segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            const distortion = Math.sin(theta * 6 + time * 0.1 + (blob.x * 0.01)) * (blob.radius * 0.03);
+            const r = blob.radius + distortion;
+            const px = blob.x + Math.cos(theta) * r;
+            const py = blob.y + Math.sin(theta) * r;
+            const sp = worldToScreen(px, py);
+            if (i === 0) ctx.moveTo(sp.x, sp.y);
+            else ctx.lineTo(sp.x, sp.y);
+        }
+    } else {
+        const sp = worldToScreen(blob.x, blob.y);
+        ctx.arc(sp.x, sp.y, blob.radius, 0, Math.PI * 2);
+    }
+    
+    ctx.closePath();
+    ctx.fillStyle = blob.color;
+    ctx.fill();
+    
+    const spCenter = worldToScreen(blob.x, blob.y);
+    
+    // Border
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = isPlayer ? COLOR_PLAYER_BORDER : 'rgba(0,0,0,0.3)';
+    ctx.stroke();
+
+    // Shine
+    if (blob.radius > 8) {
+        ctx.beginPath();
+        ctx.arc(spCenter.x - blob.radius * 0.3, spCenter.y - blob.radius * 0.3, blob.radius * 0.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.fill();
+    }
+
+    // Name
+    if (blob.name && blob.radius > 15) {
+        ctx.fillStyle = 'white';
+        ctx.font = `bold ${Math.max(10, blob.radius * 0.4)}px "Inter"`;
+        ctx.textAlign = 'center';
+        ctx.fillText(blob.name, spCenter.x, spCenter.y + 4);
+    }
+  };
+
+  const checkCollision = (a: BlobEntity, b: BlobEntity) => {
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      return dist < a.radius - b.radius * 0.2; 
+  };
+
+  useEffect(() => {
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    if (gameStatus === GameStatus.PLAYING) {
+      startBGM();
+      resetGame();
+      requestRef.current = requestAnimationFrame(animate);
+    } else {
+      stopBGM();
+      if (gameStatus === GameStatus.IDLE || gameStatus === GameStatus.GAME_OVER) {
+         requestRef.current = requestAnimationFrame(animatePreview);
+      }
+    }
+    return () => {
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, [gameStatus]);
+
+  const animatePreview = () => {
+    if (gameStatus === GameStatus.IDLE || gameStatus === GameStatus.GAME_OVER) {
+        requestRef.current = requestAnimationFrame(animatePreview);
+    }
+    if (!canvasRef.current || !videoRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+    if (videoRef.current.readyState < 2) return;
+
+    ctx.save();
+    ctx.translate(canvasRef.current.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctx.restore();
+
+    if (gameStatus === GameStatus.GAME_OVER) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 64px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("GAME OVER", canvasRef.current.width / 2, canvasRef.current.height / 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '24px "Inter", sans-serif';
+        ctx.fillText(`Final Size: ${Math.floor(scoreRef.current)}`, canvasRef.current.width / 2, canvasRef.current.height / 2 + 50);
     }
   };
 
@@ -850,7 +1066,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         </div>
       )}
 
-      {/* HUD Overlay */}
+      {/* Score HUD */}
       {gameStatus === GameStatus.PLAYING && (
           <div className="absolute top-4 left-4 flex gap-4 pointer-events-none">
               <div className="bg-black/50 backdrop-blur px-4 py-2 rounded-lg border border-white/10">

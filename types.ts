@@ -20,6 +20,7 @@ export interface BlobEntity {
   vy: number;
   isBot?: boolean;
   name?: string;
+  mergeTimestamp?: number; // When can this blob merge with others?
 }
 
 export interface Particle {
@@ -29,6 +30,13 @@ export interface Particle {
   vy: number;
   life: number;
   color: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  mass: number;
+  isPlayer: boolean;
 }
 
 export enum GameStatus {
