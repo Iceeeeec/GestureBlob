@@ -1,4 +1,6 @@
 
+export type Language = 'en' | 'zh';
+
 export interface Point {
   x: number;
   y: number;

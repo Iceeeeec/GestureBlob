@@ -1,7 +1,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, HandLandmarker, NormalizedLandmark } from '@mediapipe/tasks-vision';
-import { GameStatus, Point, Particle, BlobEntity, Camera, LeaderboardEntry } from '../types';
+import { GameStatus, Point, Particle, BlobEntity, Camera, LeaderboardEntry, Language } from '../types';
+import { translations } from '../i18n';
 import { 
   INITIAL_PLAYER_RADIUS,
   MIN_FOOD_RADIUS,
@@ -42,16 +43,24 @@ interface GameCanvasProps {
   onStatusChange: (status: GameStatus) => void;
   onLeaderboardUpdate: (leaderboard: LeaderboardEntry[]) => void;
   gameStatus: GameStatus;
+  lang: Language;
 }
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({ 
   onScoreUpdate, 
   onStatusChange,
   onLeaderboardUpdate,
-  gameStatus 
+  gameStatus,
+  lang
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const langRef = useRef<Language>(lang);
+
+  // Sync lang ref for game loop
+  useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
   
   // Logic Refs
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
@@ -984,11 +993,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     // Name
-    if (blob.name && blob.radius > 15) {
+    if (blob.radius > 15) {
         ctx.fillStyle = 'white';
         ctx.font = `bold ${Math.max(10, blob.radius * 0.4)}px "Inter"`;
         ctx.textAlign = 'center';
-        ctx.fillText(blob.name, spCenter.x, spCenter.y + 4);
+        
+        const currentT = translations[langRef.current];
+        let displayName = blob.name || '';
+        // Translate Player Name if it matches standard 'You'
+        if (isPlayer) {
+           displayName = currentT.you;
+        }
+        
+        ctx.fillText(displayName, spCenter.x, spCenter.y + 4);
     }
   };
 
@@ -1022,6 +1039,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
     if (videoRef.current.readyState < 2) return;
+    
+    // Use lang ref for text in loop
+    const currentT = translations[langRef.current];
 
     ctx.save();
     ctx.translate(canvasRef.current.width, 0);
@@ -1035,12 +1055,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = '#ef4444';
         ctx.font = 'bold 64px "Inter", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText("GAME OVER", canvasRef.current.width / 2, canvasRef.current.height / 2);
+        ctx.fillText(currentT.gameOver, canvasRef.current.width / 2, canvasRef.current.height / 2);
         ctx.fillStyle = '#ffffff';
         ctx.font = '24px "Inter", sans-serif';
-        ctx.fillText(`Final Size: ${Math.floor(scoreRef.current)}`, canvasRef.current.width / 2, canvasRef.current.height / 2 + 50);
+        ctx.fillText(`${currentT.finalSize}: ${Math.floor(scoreRef.current)}`, canvasRef.current.width / 2, canvasRef.current.height / 2 + 50);
     }
   };
+
+  // Get current translation for Overlay
+  const t = translations[lang];
 
   return (
     <div className="relative w-full h-full bg-black rounded-3xl overflow-hidden border border-slate-700 shadow-2xl">
@@ -1051,9 +1074,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-8 z-50">
            <div className="max-w-md text-center">
               <div className="text-rose-500 text-5xl mb-4">⚠️</div>
-              <h3 className="text-xl font-bold text-white mb-2">Error</h3>
+              <h3 className="text-xl font-bold text-white mb-2">{t.error}</h3>
               <p className="text-rose-300 mb-6">{errorMsg}</p>
-              <button onClick={() => window.location.reload()} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-full text-white">Reload</button>
+              <button onClick={() => window.location.reload()} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-full text-white">{t.reload}</button>
            </div>
         </div>
       )}
@@ -1062,7 +1085,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {!errorMsg && gameStatus === GameStatus.LOADING_MODEL && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-40">
            <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-           <p className="text-cyan-400 font-mono animate-pulse">Initializing Vision System...</p>
+           <p className="text-cyan-400 font-mono animate-pulse">{t.initializing}</p>
         </div>
       )}
 
@@ -1070,7 +1093,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       {gameStatus === GameStatus.PLAYING && (
           <div className="absolute top-4 left-4 flex gap-4 pointer-events-none">
               <div className="bg-black/50 backdrop-blur px-4 py-2 rounded-lg border border-white/10">
-                  <span className="text-xs text-slate-400 uppercase block">Mass</span>
+                  <span className="text-xs text-slate-400 uppercase block">{t.massHUD}</span>
                   <span className="text-xl font-bold text-cyan-400">{Math.floor(scoreRef.current)}</span>
               </div>
           </div>
