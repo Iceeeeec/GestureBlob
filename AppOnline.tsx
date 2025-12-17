@@ -143,6 +143,35 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // 手机端自动请求横屏全屏
+  useEffect(() => {
+    if (view !== 'game') return; // 只在游戏视图请求
+
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      const requestLandscapeFullscreen = async () => {
+        try {
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+
+          if (screen.orientation && (screen.orientation as any).lock) {
+            try {
+              await (screen.orientation as any).lock('landscape');
+            } catch (e) {
+              console.log('Orientation lock not supported');
+            }
+          }
+        } catch (e) {
+          console.log('Fullscreen not supported or denied');
+        }
+      };
+
+      const timer = setTimeout(requestLandscapeFullscreen, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [view]);
+
   // 大厅视图
   if (view === 'lobby') {
     return (

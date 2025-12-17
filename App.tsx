@@ -37,6 +37,37 @@ export default function App({ onBack }: AppProps) {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // 手机端自动请求横屏全屏
+  useEffect(() => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      const requestLandscapeFullscreen = async () => {
+        try {
+          // 请求全屏
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+
+          // 尝试锁定横屏方向
+          if (screen.orientation && (screen.orientation as any).lock) {
+            try {
+              await (screen.orientation as any).lock('landscape');
+            } catch (e) {
+              // 部分浏览器不支持方向锁定
+              console.log('Orientation lock not supported');
+            }
+          }
+        } catch (e) {
+          console.log('Fullscreen not supported or denied');
+        }
+      };
+
+      // 延迟一小段时间请求，确保页面已加载
+      const timer = setTimeout(requestLandscapeFullscreen, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   const handleScoreUpdate = (newScore: number) => {
     setScore(newScore);
     if (newScore > highScore) {
