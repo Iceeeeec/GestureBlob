@@ -226,48 +226,50 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
   // 游戏视图
   return (
     <div className="h-screen overflow-hidden bg-slate-950 text-white flex flex-col font-sans">
-      {/* Header - 简化版 */}
-      <header className="px-3 sm:px-6 py-2 flex items-center justify-between bg-slate-900 border-b border-slate-800">
-        <div className="flex items-center gap-2 sm:gap-4">
-          <span className="hidden sm:block"><Logo /></span>
-          <div className="text-xs bg-slate-800 px-2 py-1 rounded-full text-cyan-400 font-mono">
-            {roomCode}
+      {/* Header - 全屏时隐藏 */}
+      {!isFullscreen && (
+        <header className="px-3 sm:px-6 py-2 flex items-center justify-between bg-slate-900 border-b border-slate-800">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:block"><Logo /></span>
+            <div className="text-xs bg-slate-800 px-2 py-1 rounded-full text-cyan-400 font-mono">
+              {roomCode}
+            </div>
+            <span className={`text-xs px-2 py-1 rounded font-mono ${ping < 50 ? 'bg-green-500/20 text-green-400' :
+              ping < 100 ? 'bg-yellow-500/20 text-yellow-400' :
+                'bg-rose-500/20 text-rose-400'
+              }`}>
+              {ping}ms
+            </span>
           </div>
-          <span className={`text-xs px-2 py-1 rounded font-mono ${ping < 50 ? 'bg-green-500/20 text-green-400' :
-            ping < 100 ? 'bg-yellow-500/20 text-yellow-400' :
-              'bg-rose-500/20 text-rose-400'
-            }`}>
-            {ping}ms
-          </span>
-        </div>
-        <nav className="flex gap-2 items-center">
-          <button
-            onClick={() => setIsGuideOpen(true)}
-            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors flex items-center gap-1"
-            title={lang === 'zh' ? '操作指南' : 'Guide'}
-          >
-            <span className="text-base">🎮</span>
-            <span className="hidden sm:inline">{lang === 'zh' ? '指南' : 'Guide'}</span>
-          </button>
-          <button
-            onClick={toggleLang}
-            className="hidden sm:block px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
-          >
-            {lang === 'en' ? '中文' : 'EN'}
-          </button>
-          <button
-            onClick={handleBackToLobby}
-            className="px-3 py-1 text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors"
-          >
-            {lang === 'zh' ? '退出' : 'Leave'}
-          </button>
-        </nav>
-      </header>
+          <nav className="flex gap-2 items-center">
+            <button
+              onClick={() => setIsGuideOpen(true)}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors flex items-center gap-1"
+              title={lang === 'zh' ? '操作指南' : 'Guide'}
+            >
+              <span className="text-base">🎮</span>
+              <span className="hidden sm:inline">{lang === 'zh' ? '指南' : 'Guide'}</span>
+            </button>
+            <button
+              onClick={toggleLang}
+              className="hidden sm:block px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
+            >
+              {lang === 'en' ? '中文' : 'EN'}
+            </button>
+            <button
+              onClick={handleBackToLobby}
+              className="px-3 py-1 text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors"
+            >
+              {lang === 'zh' ? '退出' : 'Leave'}
+            </button>
+          </nav>
+        </header>
+      )}
 
       {/* Main Game Area - 全屏优化 */}
-      <main className="flex-1 p-2 sm:p-4 flex flex-col min-h-0">
+      <main className={`flex-1 flex flex-col min-h-0 ${isFullscreen ? 'p-0' : 'p-2 sm:p-4'}`}>
         {/* Game Viewport */}
-        <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-800 bg-black">
+        <div className={`flex-1 relative overflow-hidden bg-black ${isFullscreen ? '' : 'rounded-xl border border-slate-800'}`}>
           {/* 时间显示 - 游戏正上方 */}
           <div className="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-30">
             <div className={`text-base sm:text-xl font-mono font-bold px-3 sm:px-4 py-1 rounded-lg backdrop-blur-sm ${remainingTime <= 30 ? 'bg-rose-500/40 text-white animate-pulse' :

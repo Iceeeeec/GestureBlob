@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { GameEngine } from './GameEngine.js';
 import { RoomPlayer, RoomState, PlayerInput, ServerMessage } from './types.js';
 
-const TICK_RATE = 60;           // 服务端逻辑更新频率
+const TICK_RATE = 30;           // 服务端逻辑更新频率
 const BROADCAST_RATE = 30;      // 状态广播频率 (提高到30fps)
 const MAX_PLAYERS = 4;
 const COUNTDOWN_SECONDS = 3;
