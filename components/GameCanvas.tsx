@@ -438,7 +438,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const tip = landmarks[tipIdx];
     const dWristPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
     const dWristTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-    return dWristTip > dWristPip * 1.2;
+    return dWristTip > dWristPip * 1.1;
   };
 
   // --- AI Logic ---

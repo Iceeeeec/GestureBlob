@@ -19,9 +19,33 @@ export default function AppMain() {
   // 模式选择界面
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-6">
-      <div className="text-center mb-8 sm:mb-12">
+      <div className="text-center mb-6 sm:mb-8">
         <Logo />
         <p className="text-slate-400 mt-2 text-sm sm:text-base">手势控制多人对战</p>
+      </div>
+
+      {/* 操作指南 - 直接显示在首页 */}
+      <div className="w-full max-w-md mb-6 sm:mb-8 px-2">
+        <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800">
+          <h3 className="text-white font-bold text-center mb-3 text-sm sm:text-base">🎮 操作指南</h3>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-slate-800/50 rounded-xl p-2 sm:p-3 text-center">
+              <div className="text-2xl sm:text-3xl mb-1">✊</div>
+              <div className="text-cyan-400 font-bold text-xs sm:text-sm">握拳</div>
+              <div className="text-slate-500 text-[10px] sm:text-xs">移动</div>
+            </div>
+            <div className="bg-slate-800/50 rounded-xl p-2 sm:p-3 text-center">
+              <div className="text-2xl sm:text-3xl mb-1">✌️</div>
+              <div className="text-yellow-400 font-bold text-xs sm:text-sm">剪刀手</div>
+              <div className="text-slate-500 text-[10px] sm:text-xs">分裂</div>
+            </div>
+            <div className="bg-slate-800/50 rounded-xl p-2 sm:p-3 text-center">
+              <div className="text-2xl sm:text-3xl mb-1">🖐️</div>
+              <div className="text-rose-400 font-bold text-xs sm:text-sm">张开手</div>
+              <div className="text-slate-500 text-[10px] sm:text-xs">吐孢子</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:gap-4 w-full max-w-sm px-2">
@@ -48,7 +72,7 @@ export default function AppMain() {
         </button>
       </div>
 
-      <p className="text-slate-600 text-xs sm:text-sm mt-8 sm:mt-12">
+      <p className="text-slate-600 text-xs sm:text-sm mt-6 sm:mt-8">
         使用摄像头手势控制游戏
       </p>
     </div>
