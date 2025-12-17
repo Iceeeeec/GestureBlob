@@ -5,7 +5,11 @@ import { Logo } from './components/Logo';
 import { GameStatus, LeaderboardEntry, Language } from './types';
 import { translations } from './i18n';
 
-export default function App() {
+interface AppProps {
+  onBack?: () => void;
+}
+
+export default function App({ onBack }: AppProps) {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.LOADING_MODEL);
@@ -13,12 +17,22 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [rank, setRank] = useState(0);
   const [lang, setLang] = useState<Language>('zh');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const t = translations[lang];
 
   useEffect(() => {
     const saved = localStorage.getItem('gestureAgar_highScore');
     if (saved) setHighScore(parseInt(saved, 10));
+  }, []);
+
+  // 监听全屏状态变化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const handleScoreUpdate = (newScore: number) => {
@@ -52,6 +66,14 @@ export default function App() {
     setLang(prev => prev === 'en' ? 'zh' : 'en');
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
   const getButtonConfig = () => {
     switch (gameStatus) {
         case GameStatus.PLAYING:
@@ -76,156 +98,121 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans">
-      {/* Header */}
-      <header className="px-6 py-4 flex items-center justify-between bg-slate-900 border-b border-slate-800">
-        {/* Use the new Logo Component */}
-        <Logo />
+      {/* Header - 简化版 */}
+      <header className="px-3 sm:px-6 py-2 flex items-center justify-between bg-slate-900 border-b border-slate-800">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="px-2 py-1 text-slate-400 hover:text-white transition-colors text-sm"
+            >
+              ← {lang === 'zh' ? '返回' : 'Back'}
+            </button>
+          )}
+          <span className="hidden sm:block"><Logo /></span>
+          <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full">单人模式</span>
+        </div>
         
-        <nav className="flex gap-4 items-center">
+        <nav className="flex gap-2 items-center">
           <button 
             onClick={toggleLang}
-            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
+            className="hidden sm:block px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
           >
             {lang === 'en' ? '中文' : 'EN'}
-          </button>
-          <button 
-            onClick={() => setIsDocsOpen(true)}
-            className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors"
-          >
-            {t.architecture}
           </button>
         </nav>
       </header>
 
       {/* Main Game Area */}
-      <main className="flex-1 container mx-auto p-4 lg:p-6 flex flex-col lg:flex-row gap-6">
-        
+      <main className="flex-1 p-2 sm:p-4 flex flex-col">
         {/* Game Viewport */}
-        <div className="flex-1 flex flex-col gap-4">
-            <div className="aspect-video w-full rounded-3xl overflow-hidden shadow-2xl shadow-cyan-900/10 border-2 border-slate-800 relative bg-black">
-                <GameCanvas 
-                  onScoreUpdate={handleScoreUpdate}
-                  onStatusChange={setGameStatus}
-                  onLeaderboardUpdate={handleLeaderboardUpdate}
-                  gameStatus={gameStatus}
-                  lang={lang}
-                />
-            </div>
-            
-            {/* Controls */}
-            <div className="flex items-center justify-between bg-slate-900/50 p-4 rounded-xl border border-slate-800">
-                <div className="flex gap-2">
-                   <div className="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full">
-                      {t.mode}
-                   </div>
-                   <div className="text-xs text-slate-400 bg-slate-800 px-3 py-1 rounded-full">
-                      {t.control}
-                   </div>
-                </div>
-                
-                <div className="flex gap-4">
-                    {gameStatus !== GameStatus.LOADING_MODEL && (
-                        <button
-                          onClick={toggleGame}
-                          className={`
-                            px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all transform hover:scale-105 active:scale-95
-                            ${btnConfig.style}
-                          `}
-                        >
-                          {btnConfig.text}
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-
-        {/* Sidebar / HUD */}
-        <aside className="w-full lg:w-80 flex flex-col gap-6">
-            
-            {/* Leaderboard */}
-            {gameStatus === GameStatus.PLAYING && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 overflow-hidden">
-                 <h3 className="font-bold text-white mb-3 text-sm uppercase tracking-wider flex items-center justify-between">
-                    {t.leaderboard}
-                    <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{t.top10}</span>
-                 </h3>
-                 <div className="space-y-2">
-                    {leaderboard.slice(0, 10).map((entry, idx) => (
-                       <div key={entry.id} className={`flex items-center justify-between text-sm p-2 rounded-lg ${entry.isPlayer ? 'bg-cyan-500/20 border border-cyan-500/30' : 'bg-slate-800/50'}`}>
-                          <div className="flex items-center gap-3">
-                             <span className={`w-5 h-5 flex items-center justify-center text-xs font-bold rounded ${idx < 3 ? 'text-black bg-yellow-400' : 'text-slate-400 bg-slate-700'}`}>
-                                {idx + 1}
-                             </span>
-                             <span className={entry.isPlayer ? 'text-cyan-300 font-bold' : 'text-slate-300'}>
-                                {entry.isPlayer ? t.you : entry.name}
-                             </span>
-                          </div>
-                          <span className="font-mono text-slate-400">{entry.mass}</span>
-                       </div>
-                    ))}
-                    {leaderboard.length === 0 && <div className="text-slate-500 text-xs text-center py-2">{t.waiting}</div>}
-                 </div>
-              </div>
-            )}
-
-            {/* Score Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                
-                <div className="relative z-10">
-                    <h2 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-1">{t.totalMass}</h2>
-                    <div className="text-6xl font-black text-white mb-6 tabular-nums tracking-tighter">
-                        {Math.floor(score).toString().padStart(2, '0')}
-                    </div>
-                    
-                    <div className="flex justify-between items-end border-t border-slate-800 pt-4">
-                        <div>
-                            <p className="text-xs text-slate-500 uppercase font-semibold">{t.record}</p>
-                            <p className="text-2xl font-bold text-cyan-400 tabular-nums">{Math.floor(highScore)}</p>
-                        </div>
-                        <div className="text-right">
-                             <p className="text-xs text-slate-500 uppercase font-semibold">{t.rank}</p>
-                             <p className="text-2xl font-bold text-yellow-400 tabular-nums">
-                                {rank > 0 ? `#${rank}` : '-'}
-                             </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Instructions */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {t.gesturesTitle}
+        <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-800 bg-black">
+          {/* 排行榜 - 游戏左上角半透明 */}
+          {gameStatus === GameStatus.PLAYING && leaderboard.length > 0 && (
+            <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-30 w-32 sm:w-48">
+              <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2 sm:p-3 border border-white/10">
+                <h3 className="text-[10px] sm:text-xs font-bold text-white/80 mb-1 sm:mb-2 uppercase tracking-wider">
+                  {t.leaderboard}
                 </h3>
-                <ul className="space-y-4 text-sm text-slate-400">
-                    <li className="flex gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-800 text-cyan-400 flex items-center justify-center font-bold text-xs shrink-0">1</span>
-                        <span>
-                           <strong>{t.moveTitle}</strong><br/>
-                           <span className="text-slate-500 text-xs">{t.moveDesc}</span>
+                <div className="space-y-0.5 sm:space-y-1">
+                  {leaderboard.slice(0, 5).map((entry, idx) => (
+                    <div
+                      key={entry.id}
+                      className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 ${
+                        entry.isPlayer ? 'text-cyan-400 font-bold' : 'text-white/70'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className={`w-3 sm:w-4 text-center ${
+                          idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : ''
+                        }`}>
+                          {idx + 1}
                         </span>
-                    </li>
-                    <li className="flex gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-800 text-yellow-400 flex items-center justify-center font-bold text-xs shrink-0">2</span>
-                        <span>
-                           <strong>{t.splitTitle}</strong><br/>
-                           <span className="text-slate-500 text-xs">{t.splitDesc}</span>
+                        <span className="truncate max-w-[60px] sm:max-w-[80px]">
+                          {entry.isPlayer ? t.you : entry.name}
                         </span>
-                    </li>
-                    <li className="flex gap-3">
-                        <span className="w-6 h-6 rounded-full bg-slate-800 text-rose-500 flex items-center justify-center font-bold text-xs shrink-0">3</span>
-                        <span>
-                           <strong>{t.ejectTitle}</strong><br/>
-                           <span className="text-slate-500 text-xs">{t.ejectDesc}</span>
-                        </span>
-                    </li>
-                </ul>
+                      </div>
+                      <span className="font-mono">{entry.mass}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-        </aside>
+          )}
+
+          {/* 全屏按钮 - 右上角 */}
+          <button
+            onClick={toggleFullscreen}
+            className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30 w-8 h-8 sm:w-10 sm:h-10 bg-black/50 backdrop-blur-sm rounded-lg border border-white/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-black/70 transition-all"
+            title={isFullscreen ? (lang === 'zh' ? '退出全屏' : 'Exit Fullscreen') : (lang === 'zh' ? '全屏' : 'Fullscreen')}
+          >
+            {isFullscreen ? (
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
+          </button>
+
+          {/* 分数显示 - 右下角 */}
+          <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 z-30">
+            <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 border border-white/10">
+              <div className="text-[10px] sm:text-xs text-white/60 uppercase">{t.totalMass}</div>
+              <div className="text-lg sm:text-2xl font-bold text-white tabular-nums">{Math.floor(score)}</div>
+            </div>
+          </div>
+
+          {/* 最高分 - 左下角 */}
+          <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-30">
+            <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 border border-white/10">
+              <div className="text-[10px] sm:text-xs text-white/60 uppercase">{t.record}</div>
+              <div className="text-lg sm:text-2xl font-bold text-cyan-400 tabular-nums">{Math.floor(highScore)}</div>
+            </div>
+          </div>
+
+          {/* 开始/结束按钮 - 底部居中 */}
+          {gameStatus !== GameStatus.LOADING_MODEL && (
+            <div className="absolute bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2 z-30">
+              <button
+                onClick={toggleGame}
+                className={`px-4 sm:px-6 py-1.5 sm:py-2 rounded-full font-bold text-sm sm:text-base shadow-lg transition-all transform hover:scale-105 active:scale-95 ${btnConfig.style}`}
+              >
+                {btnConfig.text}
+              </button>
+            </div>
+          )}
+
+          <GameCanvas 
+            onScoreUpdate={handleScoreUpdate}
+            onStatusChange={setGameStatus}
+            onLeaderboardUpdate={handleLeaderboardUpdate}
+            gameStatus={gameStatus}
+            lang={lang}
+          />
+        </div>
       </main>
 
       <ArchitectureDocs isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} lang={lang} />

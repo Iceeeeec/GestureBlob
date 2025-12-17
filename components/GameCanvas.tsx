@@ -85,6 +85,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bgmOscRef = useRef<OscillatorNode | null>(null);
   const bgmGainRef = useRef<GainNode | null>(null);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
   
   const initInProgress = useRef(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -169,38 +170,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const startBGM = () => {
     initAudio();
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    stopBGM();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(60, ctx.currentTime); 
-    const lfo = ctx.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 0.2;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 5;
-    lfo.connect(lfoGain);
-    lfoGain.connect(osc.frequency);
-    lfo.start();
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 2);
-    osc.start();
-    bgmOscRef.current = osc;
-    bgmGainRef.current = gain;
+    // 初始化背景音乐
+    if (!bgmRef.current) {
+      bgmRef.current = new Audio('/music/background.mp3');
+      bgmRef.current.loop = true;
+      bgmRef.current.volume = 0.3;
+    }
+    if (bgmRef.current.paused) {
+      bgmRef.current.play().catch(() => {});
+    }
   };
 
   const stopBGM = () => {
-    if (bgmOscRef.current && bgmGainRef.current && audioCtxRef.current) {
-        const ctx = audioCtxRef.current;
-        bgmGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
-        bgmGainRef.current.gain.setValueAtTime(bgmGainRef.current.gain.value, ctx.currentTime);
-        bgmGainRef.current.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
-        bgmOscRef.current.stop(ctx.currentTime + 0.5);
-        bgmOscRef.current = null;
+    if (bgmRef.current && !bgmRef.current.paused) {
+      bgmRef.current.pause();
+      bgmRef.current.currentTime = 0;
     }
   };
 
@@ -211,12 +195,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       initInProgress.current = true;
       try {
         onStatusChange(GameStatus.LOADING_MODEL);
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-        );
+        // 使用本地资源
+        const wasmPath = "/mediapipe";
+        const modelPath = "/mediapipe/hand_landmarker.task";
+        
+        const vision = await FilesetResolver.forVisionTasks(wasmPath);
         const handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            modelAssetPath: modelPath,
             delegate: "GPU"
           },
           runningMode: "VIDEO",
