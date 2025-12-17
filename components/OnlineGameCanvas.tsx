@@ -73,6 +73,13 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   const lastInputSendTime = useRef<number>(0);
   const INPUT_SEND_INTERVAL = 50; // 每 50ms 发送一次输入（20fps）
 
+  // 键盘/触摸输入状态
+  const keysRef = useRef<Set<string>>(new Set());
+  const joystickRef = useRef<{ active: boolean; dx: number; dy: number }>({ active: false, dx: 0, dy: 0 });
+  const joystickStartRef = useRef<Point>({ x: 0, y: 0 });
+  const keyboardSplitRef = useRef<boolean>(false);
+  const keyboardEjectRef = useRef<boolean>(false);
+
   // Audio
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
@@ -244,6 +251,27 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     });
   }, [playerId]);
 
+  // 键盘控制
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      keysRef.current.add(key);
+      if (key === 'j') keyboardSplitRef.current = true;
+      if (key === 'k') keyboardEjectRef.current = true;
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key.toLowerCase());
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   // 手势检测辅助
   const isFingerExtended = (landmarks: NormalizedLandmark[], tipIdx: number, pipIdx: number, wristIdx: number) => {
     const wrist = landmarks[wristIdx];
@@ -331,6 +359,40 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       }
     } catch (e) { }
 
+    // 如果没有检测到手势，使用键盘/摇杆输入
+    if (!hasHand) {
+      let kbDx = 0;
+      let kbDy = 0;
+
+      // WASD 或 方向键
+      if (keysRef.current.has('w') || keysRef.current.has('arrowup')) kbDy -= 1;
+      if (keysRef.current.has('s') || keysRef.current.has('arrowdown')) kbDy += 1;
+      if (keysRef.current.has('a') || keysRef.current.has('arrowleft')) kbDx -= 1;
+      if (keysRef.current.has('d') || keysRef.current.has('arrowright')) kbDx += 1;
+
+      // 触摸摇杆
+      if (joystickRef.current.active) {
+        kbDx = joystickRef.current.dx;
+        kbDy = joystickRef.current.dy;
+      }
+
+      const kbDist = Math.hypot(kbDx, kbDy);
+      if (kbDist > 0.1) {
+        // 键盘控制使用全速
+        throttle = Math.min(kbDist, 1.0);
+        targetAngle = Math.atan2(kbDy, kbDx);
+        // 更新 lastFingerPosRef 用于分裂/吐孢子方向
+        lastFingerPosRef.current = {
+          x: cw / 2 + Math.cos(targetAngle) * 100,
+          y: ch / 2 + Math.sin(targetAngle) * 100
+        };
+      }
+
+      // 键盘分裂/吐孢子
+      if (keyboardSplitRef.current) gestureType = 'SPLIT';
+      if (keyboardEjectRef.current) gestureType = 'EJECT';
+    }
+
     // 处理动作
     const now = Date.now();
     let action: 'none' | 'eject' | 'split' = 'none';
@@ -342,13 +404,29 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         if (gestureType === 'EJECT' && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
           action = 'eject';
           lastEjectTimeRef.current = now;
+          keyboardEjectRef.current = false;
         } else if (gestureType === 'SPLIT' && now - lastSplitTimeRef.current > 500) {
           action = 'split';
           lastSplitTimeRef.current = now;
+          keyboardSplitRef.current = false;
         }
       }
     } else {
       gestureHoldStartRef.current = 0;
+    }
+
+    // 键盘按下立即触发（无需 hold）
+    if (!hasHand) {
+      if (keyboardSplitRef.current && now - lastSplitTimeRef.current > 500) {
+        action = 'split';
+        lastSplitTimeRef.current = now;
+        keyboardSplitRef.current = false;
+      }
+      if (keyboardEjectRef.current && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
+        action = 'eject';
+        lastEjectTimeRef.current = now;
+        keyboardEjectRef.current = false;
+      }
     }
 
     // 发送输入到服务器（节流：每 50ms 一次，或有动作时立即发送）
@@ -565,6 +643,47 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     };
   }, [gameStatus]);
 
+  // 触摸处理
+  const handleTouchStart = (e: React.TouchEvent) => {
+    initAudio();
+    const touch = e.touches[0];
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = touch.clientX - rect.left;
+    // 左半屏作为摇杆区域
+    if (x < rect.width / 2) {
+      joystickStartRef.current = { x: touch.clientX, y: touch.clientY };
+      joystickRef.current = { active: true, dx: 0, dy: 0 };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!joystickRef.current.active) return;
+    const touch = e.touches[0];
+    const maxDist = 50;
+    let dx = (touch.clientX - joystickStartRef.current.x) / maxDist;
+    let dy = (touch.clientY - joystickStartRef.current.y) / maxDist;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 1) {
+      dx /= dist;
+      dy /= dist;
+    }
+    joystickRef.current.dx = dx;
+    joystickRef.current.dy = dy;
+  };
+
+  const handleTouchEnd = () => {
+    joystickRef.current = { active: false, dx: 0, dy: 0 };
+  };
+
+  const handleSplitButton = () => {
+    keyboardSplitRef.current = true;
+  };
+
+  const handleEjectButton = () => {
+    keyboardEjectRef.current = true;
+  };
+
   const t = translations[lang];
 
   return (
@@ -576,8 +695,35 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         height={720}
         className="w-full h-full object-cover"
         onClick={initAudio}
-        onTouchStart={initAudio}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       />
+
+      {/* 手机端操作按钮 */}
+      <div className="absolute bottom-4 right-4 flex gap-3 sm:hidden">
+        <button
+          onTouchStart={handleSplitButton}
+          className="w-16 h-16 bg-yellow-500/80 rounded-full text-white font-bold text-xl shadow-lg active:scale-90 transition-transform"
+        >
+          J
+        </button>
+        <button
+          onTouchStart={handleEjectButton}
+          className="w-16 h-16 bg-rose-500/80 rounded-full text-white font-bold text-xl shadow-lg active:scale-90 transition-transform"
+        >
+          K
+        </button>
+      </div>
+
+      {/* 键盘操作提示 */}
+      {gameStatus === GameStatus.PLAYING && (
+        <div className="absolute bottom-4 left-4 hidden sm:block">
+          <div className="bg-black/50 backdrop-blur px-3 py-2 rounded-lg border border-white/10 text-xs text-slate-400">
+            <div>WASD: 移动 | J: 分裂 | K: 吐孢子</div>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/90 p-8 z-50">

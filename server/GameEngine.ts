@@ -7,7 +7,7 @@ const INITIAL_PLAYER_RADIUS = 25;
 const MIN_FOOD_RADIUS = 5;
 const MAX_FOOD_RADIUS = 12;
 const FOOD_COUNT = 150;
-const BASE_SPEED = 6;
+const BASE_SPEED = 20;
 const PLAYER_TURN_SPEED = 0.25;
 const GROWTH_FACTOR = 0.8;
 
