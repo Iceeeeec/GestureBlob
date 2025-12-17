@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { ArchitectureDocs } from './components/ArchitectureDocs';
+import { OperationGuide } from './components/OperationGuide';
 import { Logo } from './components/Logo';
 import { GameStatus, LeaderboardEntry, Language } from './types';
 import { translations } from './i18n';
@@ -14,6 +15,7 @@ export default function App({ onBack }: AppProps) {
   const [highScore, setHighScore] = useState(0);
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.LOADING_MODEL);
   const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [rank, setRank] = useState(0);
   const [lang, setLang] = useState<Language>('zh');
@@ -42,16 +44,16 @@ export default function App({ onBack }: AppProps) {
       localStorage.setItem('gestureAgar_highScore', newScore.toString());
     }
   };
-  
+
   const handleLeaderboardUpdate = (list: LeaderboardEntry[]) => {
-      setLeaderboard(list);
-      // Calculate Rank (1-based index)
-      const myIndex = list.findIndex(e => e.isPlayer);
-      if (myIndex !== -1) {
-          setRank(myIndex + 1);
-      } else {
-          setRank(0); // Not found (Game Over)
-      }
+    setLeaderboard(list);
+    // Calculate Rank (1-based index)
+    const myIndex = list.findIndex(e => e.isPlayer);
+    if (myIndex !== -1) {
+      setRank(myIndex + 1);
+    } else {
+      setRank(0); // Not found (Game Over)
+    }
   };
 
   const toggleGame = () => {
@@ -68,29 +70,29 @@ export default function App({ onBack }: AppProps) {
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => { });
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => { });
     }
   };
 
   const getButtonConfig = () => {
     switch (gameStatus) {
-        case GameStatus.PLAYING:
-            return {
-                text: t.endGame,
-                style: 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
-            };
-        case GameStatus.GAME_OVER:
-            return {
-                text: t.respawn,
-                style: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-500/30 animate-pulse'
-            };
-        default:
-            return {
-                text: t.startGame,
-                style: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-500/30 animate-pulse'
-            };
+      case GameStatus.PLAYING:
+        return {
+          text: t.endGame,
+          style: 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
+        };
+      case GameStatus.GAME_OVER:
+        return {
+          text: t.respawn,
+          style: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-500/30 animate-pulse'
+        };
+      default:
+        return {
+          text: t.startGame,
+          style: 'bg-cyan-500 hover:bg-cyan-600 text-white shadow-cyan-500/30 animate-pulse'
+        };
     }
   };
 
@@ -112,9 +114,17 @@ export default function App({ onBack }: AppProps) {
           <span className="hidden sm:block"><Logo /></span>
           <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full">单人模式</span>
         </div>
-        
+
         <nav className="flex gap-2 items-center">
-          <button 
+          <button
+            onClick={() => setIsGuideOpen(true)}
+            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors flex items-center gap-1"
+            title={lang === 'zh' ? '操作指南' : 'Guide'}
+          >
+            <span className="text-base">🎮</span>
+            <span className="hidden sm:inline">{lang === 'zh' ? '指南' : 'Guide'}</span>
+          </button>
+          <button
             onClick={toggleLang}
             className="hidden sm:block px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
           >
@@ -138,14 +148,12 @@ export default function App({ onBack }: AppProps) {
                   {leaderboard.slice(0, 5).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 ${
-                        entry.isPlayer ? 'text-cyan-400 font-bold' : 'text-white/70'
-                      }`}
+                      className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 ${entry.isPlayer ? 'text-cyan-400 font-bold' : 'text-white/70'
+                        }`}
                     >
                       <div className="flex items-center gap-1">
-                        <span className={`w-3 sm:w-4 text-center ${
-                          idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : ''
-                        }`}>
+                        <span className={`w-3 sm:w-4 text-center ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : ''
+                          }`}>
                           {idx + 1}
                         </span>
                         <span className="truncate max-w-[60px] sm:max-w-[80px]">
@@ -205,7 +213,7 @@ export default function App({ onBack }: AppProps) {
             </div>
           )}
 
-          <GameCanvas 
+          <GameCanvas
             onScoreUpdate={handleScoreUpdate}
             onStatusChange={setGameStatus}
             onLeaderboardUpdate={handleLeaderboardUpdate}
@@ -216,6 +224,7 @@ export default function App({ onBack }: AppProps) {
       </main>
 
       <ArchitectureDocs isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} lang={lang} />
+      <OperationGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} lang={lang} />
     </div>
   );
 }

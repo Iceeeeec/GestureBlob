@@ -29,6 +29,12 @@ export interface PlayerInput {
   angle: number;      // 移动方向
   throttle: number;   // 0-1 速度比例
   action: 'none' | 'eject' | 'split';
+  // For split action: world coordinates of hand position
+  splitTargetX?: number;
+  splitTargetY?: number;
+  // For eject action: world coordinates of hand position
+  ejectTargetX?: number;
+  ejectTargetY?: number;
 }
 
 export interface FoodEntity {

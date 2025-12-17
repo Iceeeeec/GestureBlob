@@ -60,11 +60,11 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   const cameraRef = useRef<Camera>({ x: 0, y: 0, scale: 1 });
   const lastFingerPosRef = useRef<Point>({ x: 0, y: 0 });
   const timeRef = useRef<number>(0);
-  
+
   // 插值平滑：存储渲染用的位置（平滑过渡）
   const interpolatedPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
   const INTERPOLATION_SPEED = 0.3; // 插值速度，越大越快跟上服务器位置
-  
+
   // 输入状态
   const lastEjectTimeRef = useRef<number>(0);
   const lastSplitTimeRef = useRef<number>(0);
@@ -107,7 +107,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   const startBgm = () => {
     initAudio();
     if (bgmRef.current && bgmRef.current.paused) {
-      bgmRef.current.play().catch(() => {});
+      bgmRef.current.play().catch(() => { });
     }
   };
 
@@ -138,7 +138,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   // 初始化 MediaPipe
   useEffect(() => {
     if (handLandmarkerRef.current || initInProgress.current) return;
-    
+
     const initMediaPipe = async () => {
       initInProgress.current = true;
       try {
@@ -146,7 +146,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         // 使用本地资源
         const wasmPath = "/mediapipe";
         const modelPath = "/mediapipe/hand_landmarker.task";
-        
+
         const vision = await FilesetResolver.forVisionTasks(wasmPath);
         const handLandmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
@@ -204,23 +204,23 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   useEffect(() => {
     const handleGameState = (state: GameStateSnapshot) => {
       gameStateRef.current = state;
-      
+
       // 更新排行榜
       onLeaderboardUpdate(state.leaderboard);
-      
+
       // 计算自己的分数
       const myPlayer = state.players.find(p => p.id === playerId);
       if (myPlayer) {
         const mass = myPlayer.blobs.reduce((sum, b) => sum + b.radius, 0);
-        
+
         // 检测质量增加，播放吃食物音效
         if (mass > prevMassRef.current + 1) {
           playEatSound(mass);
         }
         prevMassRef.current = mass;
-        
+
         onScoreUpdate(mass);
-        
+
         // 不再自动设置 GAME_OVER，让玩家可以观战和重生
       }
     };
@@ -279,7 +279,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       requestRef.current = requestAnimationFrame(animate);
     }
     if (!canvasRef.current || !videoRef.current || !handLandmarkerRef.current) return;
-    
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -329,7 +329,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         throttle = Math.min(dist / INPUT_MAX_SPEED_DISTANCE, 1.0);
         targetAngle = Math.atan2(dy, dx);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 处理动作
     const now = Date.now();
@@ -353,8 +353,21 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
 
     // 发送输入到服务器（节流：每 50ms 一次，或有动作时立即发送）
     const input: PlayerInput = { angle: targetAngle, throttle, action };
+
+    // If split action, add hand world coordinates
+    if (action === 'split') {
+      input.splitTargetX = lastFingerPosRef.current.x + cameraRef.current.x;
+      input.splitTargetY = lastFingerPosRef.current.y + cameraRef.current.y;
+    }
+
+    // If eject action, add hand world coordinates
+    if (action === 'eject') {
+      input.ejectTargetX = lastFingerPosRef.current.x + cameraRef.current.x;
+      input.ejectTargetY = lastFingerPosRef.current.y + cameraRef.current.y;
+    }
+
     currentInputRef.current = input;
-    
+
     if (action !== 'none' || now - lastInputSendTime.current > INPUT_SEND_INTERVAL) {
       gameSocket.sendInput(input);
       lastInputSendTime.current = now;
@@ -429,7 +442,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         // 获取或初始化插值位置
         const key = blob.id;
         let interpPos = interpolatedPositions.current.get(key);
-        
+
         if (!interpPos) {
           // 首次出现，直接使用服务器位置
           interpPos = { x: blob.x, y: blob.y };
@@ -439,7 +452,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
           interpPos.x += (blob.x - interpPos.x) * INTERPOLATION_SPEED;
           interpPos.y += (blob.y - interpPos.y) * INTERPOLATION_SPEED;
         }
-        
+
         // 使用插值位置绘制
         const smoothBlob = { ...blob, x: interpPos.x, y: interpPos.y };
         drawBlob(ctx, smoothBlob, isMe, player.name);
@@ -557,11 +570,11 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   return (
     <div className="relative w-full h-full bg-black rounded-3xl overflow-hidden border border-slate-700 shadow-2xl">
       <video ref={videoRef} className="hidden" autoPlay playsInline muted />
-      <canvas 
-        ref={canvasRef} 
-        width={1280} 
-        height={720} 
-        className="w-full h-full object-cover" 
+      <canvas
+        ref={canvasRef}
+        width={1280}
+        height={720}
+        className="w-full h-full object-cover"
         onClick={initAudio}
         onTouchStart={initAudio}
       />

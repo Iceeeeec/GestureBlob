@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lobby } from './components/Lobby';
 import { OnlineGameCanvas } from './components/OnlineGameCanvas';
 import { ArchitectureDocs } from './components/ArchitectureDocs';
+import { OperationGuide } from './components/OperationGuide';
 import { Logo } from './components/Logo';
 import { GameStatus, LeaderboardEntry, Language } from './types';
 import { translations } from './i18n';
@@ -20,6 +21,7 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
   const [highScore, setHighScore] = useState(0);
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.LOADING_MODEL);
   const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [rank, setRank] = useState(0);
@@ -126,9 +128,9 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => { });
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => { });
     }
   };
 
@@ -160,13 +162,20 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
           </div>
           <div className="flex items-center gap-3">
             {/* 延迟显示 */}
-            <span className={`text-xs px-2 py-1 rounded font-mono ${
-              ping < 50 ? 'bg-green-500/20 text-green-400' :
+            <span className={`text-xs px-2 py-1 rounded font-mono ${ping < 50 ? 'bg-green-500/20 text-green-400' :
               ping < 100 ? 'bg-yellow-500/20 text-yellow-400' :
-              'bg-rose-500/20 text-rose-400'
-            }`}>
+                'bg-rose-500/20 text-rose-400'
+              }`}>
               {ping}ms
             </span>
+            <button
+              onClick={() => setIsGuideOpen(true)}
+              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors flex items-center gap-1"
+              title={lang === 'zh' ? '操作指南' : 'Guide'}
+            >
+              <span className="text-base">🎮</span>
+              <span className="hidden sm:inline">{lang === 'zh' ? '指南' : 'Guide'}</span>
+            </button>
             <button
               onClick={toggleLang}
               className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
@@ -175,11 +184,12 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
             </button>
           </div>
         </header>
-        <Lobby 
-          lang={lang} 
+        <Lobby
+          lang={lang}
           onGameStart={handleGameStart}
           initialRoomState={returnToRoom ? { roomCode, playerId, isHost, playerName } : undefined}
         />
+        <OperationGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} lang={lang} />
       </div>
     );
   }
@@ -194,15 +204,22 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
           <div className="text-xs bg-slate-800 px-2 py-1 rounded-full text-cyan-400 font-mono">
             {roomCode}
           </div>
-          <span className={`text-xs px-2 py-1 rounded font-mono ${
-            ping < 50 ? 'bg-green-500/20 text-green-400' :
+          <span className={`text-xs px-2 py-1 rounded font-mono ${ping < 50 ? 'bg-green-500/20 text-green-400' :
             ping < 100 ? 'bg-yellow-500/20 text-yellow-400' :
-            'bg-rose-500/20 text-rose-400'
-          }`}>
+              'bg-rose-500/20 text-rose-400'
+            }`}>
             {ping}ms
           </span>
         </div>
         <nav className="flex gap-2 items-center">
+          <button
+            onClick={() => setIsGuideOpen(true)}
+            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors flex items-center gap-1"
+            title={lang === 'zh' ? '操作指南' : 'Guide'}
+          >
+            <span className="text-base">🎮</span>
+            <span className="hidden sm:inline">{lang === 'zh' ? '指南' : 'Guide'}</span>
+          </button>
           <button
             onClick={toggleLang}
             className="hidden sm:block px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase transition-colors"
@@ -224,11 +241,10 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
         <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-800 bg-black">
           {/* 时间显示 - 游戏正上方 */}
           <div className="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-30">
-            <div className={`text-base sm:text-xl font-mono font-bold px-3 sm:px-4 py-1 rounded-lg backdrop-blur-sm ${
-              remainingTime <= 30 ? 'bg-rose-500/40 text-white animate-pulse' : 
-              remainingTime <= 60 ? 'bg-yellow-500/40 text-white' : 
-              'bg-black/50 text-white'
-            }`}>
+            <div className={`text-base sm:text-xl font-mono font-bold px-3 sm:px-4 py-1 rounded-lg backdrop-blur-sm ${remainingTime <= 30 ? 'bg-rose-500/40 text-white animate-pulse' :
+              remainingTime <= 60 ? 'bg-yellow-500/40 text-white' :
+                'bg-black/50 text-white'
+              }`}>
               ⏱ {formatTime(remainingTime)}
             </div>
           </div>
@@ -244,14 +260,12 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
                   {leaderboard.slice(0, 5).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 ${
-                        entry.isPlayer ? 'text-cyan-400 font-bold' : 'text-white/70'
-                      }`}
+                      className={`flex items-center justify-between text-[10px] sm:text-xs py-0.5 ${entry.isPlayer ? 'text-cyan-400 font-bold' : 'text-white/70'
+                        }`}
                     >
                       <div className="flex items-center gap-1">
-                        <span className={`w-3 sm:w-4 text-center ${
-                          idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : ''
-                        }`}>
+                        <span className={`w-3 sm:w-4 text-center ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : ''
+                          }`}>
                           {idx + 1}
                         </span>
                         <span className="truncate max-w-[60px] sm:max-w-[80px]">
@@ -292,40 +306,40 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
           </div>
 
           <OnlineGameCanvas
-              playerId={playerId}
-              onScoreUpdate={handleScoreUpdate}
-              onStatusChange={setGameStatus}
-              onLeaderboardUpdate={handleLeaderboardUpdate}
-              gameStatus={gameStatus}
-              lang={lang}
-              onGameOver={setGameOverWinner}
-            />
+            playerId={playerId}
+            onScoreUpdate={handleScoreUpdate}
+            onStatusChange={setGameStatus}
+            onLeaderboardUpdate={handleLeaderboardUpdate}
+            gameStatus={gameStatus}
+            lang={lang}
+            onGameOver={setGameOverWinner}
+          />
 
-            {/* Death Overlay - 玩家死亡时显示（游戏未结束时） */}
-            {gameStatus === GameStatus.GAME_OVER && !showResult && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
-                <h2 className="text-2xl sm:text-4xl font-black text-rose-500 mb-2 text-center">
-                  {lang === 'zh' ? '你被吃掉了!' : 'You got eaten!'}
-                </h2>
-                <p className="text-slate-400 mb-4 sm:mb-6 text-sm sm:text-base text-center">
-                  {lang === 'zh' ? '其他玩家仍在游戏中' : 'Other players are still playing'}
-                </p>
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
-                  <button
-                    onClick={handleRespawn}
-                    className="px-6 sm:px-8 py-2 sm:py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-full transition-all animate-pulse text-sm sm:text-base"
-                  >
-                    {lang === 'zh' ? '重新加入' : 'Respawn'}
-                  </button>
-                  <button
-                    onClick={handleBackToLobby}
-                    className="px-6 sm:px-8 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-full transition-all text-sm sm:text-base"
-                  >
-                    {lang === 'zh' ? '返回大厅' : 'Back to Lobby'}
-                  </button>
-                </div>
+          {/* Death Overlay - 玩家死亡时显示（游戏未结束时） */}
+          {gameStatus === GameStatus.GAME_OVER && !showResult && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
+              <h2 className="text-2xl sm:text-4xl font-black text-rose-500 mb-2 text-center">
+                {lang === 'zh' ? '你被吃掉了!' : 'You got eaten!'}
+              </h2>
+              <p className="text-slate-400 mb-4 sm:mb-6 text-sm sm:text-base text-center">
+                {lang === 'zh' ? '其他玩家仍在游戏中' : 'Other players are still playing'}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
+                <button
+                  onClick={handleRespawn}
+                  className="px-6 sm:px-8 py-2 sm:py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-full transition-all animate-pulse text-sm sm:text-base"
+                >
+                  {lang === 'zh' ? '重新加入' : 'Respawn'}
+                </button>
+                <button
+                  onClick={handleBackToLobby}
+                  className="px-6 sm:px-8 py-2 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-full transition-all text-sm sm:text-base"
+                >
+                  {lang === 'zh' ? '返回大厅' : 'Back to Lobby'}
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
           {/* 结算界面 - 时间结束时显示 */}
           {showResult && (
@@ -333,7 +347,7 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
               <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500 mb-4 shrink-0">
                 {lang === 'zh' ? '🏆 游戏结束 🏆' : '🏆 Game Over 🏆'}
               </h2>
-              
+
               <div className="w-full max-w-sm bg-slate-800/50 rounded-xl p-3 sm:p-4 mb-4 shrink-0 max-h-[50vh] overflow-auto">
                 <h3 className="text-center text-sm font-bold text-slate-300 mb-2">
                   {lang === 'zh' ? '最终排名' : 'Final Rankings'}
@@ -342,18 +356,16 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
                   {finalLeaderboard.slice(0, 8).map((entry, idx) => (
                     <div
                       key={entry.id}
-                      className={`flex items-center justify-between p-1.5 sm:p-2 rounded-lg text-sm ${
-                        entry.id === playerId ? 'bg-cyan-500/30 border border-cyan-500/50' : 
+                      className={`flex items-center justify-between p-1.5 sm:p-2 rounded-lg text-sm ${entry.id === playerId ? 'bg-cyan-500/30 border border-cyan-500/50' :
                         idx < 3 ? 'bg-yellow-500/10' : 'bg-slate-700/50'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full ${
-                          idx === 0 ? 'bg-yellow-400 text-black' :
+                        <span className={`w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full ${idx === 0 ? 'bg-yellow-400 text-black' :
                           idx === 1 ? 'bg-slate-300 text-black' :
-                          idx === 2 ? 'bg-amber-600 text-white' :
-                          'bg-slate-600 text-slate-300'
-                        }`}>
+                            idx === 2 ? 'bg-amber-600 text-white' :
+                              'bg-slate-600 text-slate-300'
+                          }`}>
                           {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                         </span>
                         <span className={`text-xs sm:text-sm ${entry.id === playerId ? 'text-cyan-300 font-bold' : 'text-white'}`}>
@@ -387,6 +399,7 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
       </main>
 
       <ArchitectureDocs isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} lang={lang} />
+      <OperationGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} lang={lang} />
     </div>
   );
 }

@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
 
         const code = generateRoomCode();
         const room = new Room(io, code, msg.gameDuration);
-        
+
         if (room.addPlayer(socket, msg.playerName)) {
           rooms.set(code, room);
           playerRooms.set(socket.id, code);
@@ -117,7 +117,7 @@ io.on('connection', (socket) => {
       case 'rejoin_room': {
         // 玩家从结算界面返回房间，请求同步房间状态
         const existingRoomCode = playerRooms.get(socket.id);
-        
+
         if (existingRoomCode && existingRoomCode === msg.roomCode.toUpperCase()) {
           // 玩家还在这个房间中，发送当前房间状态
           const room = rooms.get(existingRoomCode);
@@ -144,7 +144,7 @@ io.on('connection', (socket) => {
         if (room) {
           const isEmpty = room.removePlayer(socket.id);
           socket.leave(roomCode);
-          
+
           if (isEmpty) {
             room.destroy();
             rooms.delete(roomCode);
@@ -195,7 +195,6 @@ io.on('connection', (socket) => {
 
       case 'ping': {
         // 立即返回 pong，用于计算延迟
-        console.log('[Ping] Received ping, sending pong, timestamp:', msg.timestamp);
         socket.emit('message', {
           type: 'pong',
           timestamp: msg.timestamp
@@ -207,7 +206,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
-    
+
     const roomCode = playerRooms.get(socket.id);
     if (roomCode) {
       const room = rooms.get(roomCode);

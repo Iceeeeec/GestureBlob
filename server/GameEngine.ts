@@ -61,7 +61,7 @@ export class GameEngine {
     this.colorIndex++;
 
     const spawnPos = this.getRandomSpawnPosition();
-    
+
     const player: PlayerState = {
       id: playerId,
       name,
@@ -119,16 +119,17 @@ export class GameEngine {
 
     // 处理动作
     if (input.action === 'split') {
-      this.splitPlayer(player, input.angle);
+      // Pass split target coordinates for per-blob angle calculation
+      this.splitPlayer(player, input.splitTargetX, input.splitTargetY);
     } else if (input.action === 'eject') {
-      this.ejectSpore(player, input.angle);
+      this.ejectSpore(player, input.ejectTargetX, input.ejectTargetY);
     }
 
     // 存储输入用于物理更新
     (player as any)._input = input;
   }
 
-  private splitPlayer(player: PlayerState, angle: number): void {
+  private splitPlayer(player: PlayerState, targetX?: number, targetY?: number): void {
     if (player.blobs.length >= MAX_PLAYER_BLOBS) return;
 
     const newBlobs: BlobEntity[] = [];
@@ -136,6 +137,17 @@ export class GameEngine {
 
     player.blobs.forEach(blob => {
       if (blob.radius >= MIN_SPLIT_RADIUS && (player.blobs.length + newBlobs.length) < MAX_PLAYER_BLOBS) {
+        // Calculate angle from this blob towards the target position (hand world coordinates)
+        let angle: number;
+        if (targetX !== undefined && targetY !== undefined) {
+          const dx = targetX - blob.x;
+          const dy = targetY - blob.y;
+          angle = Math.atan2(dy, dx);
+        } else {
+          // Fallback to blob's current velocity direction
+          angle = Math.atan2(blob.vy, blob.vx);
+        }
+
         const newRadius = blob.radius / Math.SQRT2;
         blob.radius = newRadius;
 
@@ -158,9 +170,20 @@ export class GameEngine {
     player.blobs.push(...newBlobs);
   }
 
-  private ejectSpore(player: PlayerState, angle: number): void {
+  private ejectSpore(player: PlayerState, targetX?: number, targetY?: number): void {
     player.blobs.forEach(blob => {
       if (blob.radius < MIN_EJECT_RADIUS) return;
+
+      // Calculate angle from this blob towards the target position (hand world coordinates)
+      let angle: number;
+      if (targetX !== undefined && targetY !== undefined) {
+        const dx = targetX - blob.x;
+        const dy = targetY - blob.y;
+        angle = Math.atan2(dy, dx);
+      } else {
+        // Fallback to blob's current velocity direction
+        angle = Math.atan2(blob.vy, blob.vx);
+      }
 
       const newAreaSq = blob.radius * blob.radius - SPORE_RADIUS * SPORE_RADIUS;
       blob.radius = Math.sqrt(newAreaSq);
@@ -249,7 +272,7 @@ export class GameEngine {
 
         if (dist < radSum) {
           const canMerge = (!b1.mergeTimestamp || b1.mergeTimestamp < now) &&
-                           (!b2.mergeTimestamp || b2.mergeTimestamp < now);
+            (!b2.mergeTimestamp || b2.mergeTimestamp < now);
 
           if (canMerge) {
             const invMass1 = 1 / b1.radius;
@@ -432,7 +455,7 @@ export class GameEngine {
   private updateBots(): void {
     // 获取所有玩家和 Bot 的位置用于 AI 决策
     const allEntities: { x: number; y: number; radius: number; id: string }[] = [];
-    
+
     this.players.forEach(player => {
       if (!player.isAlive) return;
       player.blobs.forEach(blob => {

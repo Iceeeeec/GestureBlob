@@ -16,6 +16,12 @@ export interface PlayerInput {
   angle: number;
   throttle: number;
   action: 'none' | 'eject' | 'split';
+  // For split action: world coordinates of hand position
+  splitTargetX?: number;
+  splitTargetY?: number;
+  // For eject action: world coordinates of hand position
+  ejectTargetX?: number;
+  ejectTargetY?: number;
 }
 
 export interface FoodEntity {

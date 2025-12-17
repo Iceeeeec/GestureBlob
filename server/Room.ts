@@ -160,10 +160,22 @@ export class Room {
   private broadcastState(): void {
     if (!this.engine) return;
 
-    // 为每个玩家发送个性化状态（标记自己）
+    // Generate state once without player marking
+    const baseState = this.engine.getState();
+
+    // For each player, just mark their entry in the leaderboard
     this.sockets.forEach((socket, playerId) => {
-      const state = this.engine!.getState(playerId);
-      socket.emit('message', { type: 'game_state', state } as ServerMessage);
+      // Clone leaderboard and mark isPlayer for this recipient
+      const leaderboard = baseState.leaderboard.map(entry => ({
+        ...entry,
+        isPlayer: entry.id === playerId
+      }));
+
+      // Send state with modified leaderboard
+      socket.emit('message', {
+        type: 'game_state',
+        state: { ...baseState, leaderboard }
+      } as ServerMessage);
     });
   }
 
@@ -173,7 +185,7 @@ export class Room {
     // 检查每个玩家是否死亡，通知他们可以重生
     this.players.forEach((player, playerId) => {
       const isAlive = this.engine!.isPlayerAlive(playerId);
-      
+
       if (!isAlive && !this.deadNotified.has(playerId)) {
         // 玩家刚死亡，发送通知
         this.deadNotified.add(playerId);
