@@ -7,7 +7,7 @@ const INITIAL_PLAYER_RADIUS = 25;
 const MIN_FOOD_RADIUS = 5;
 const MAX_FOOD_RADIUS = 12;
 const FOOD_COUNT = 150;
-const BASE_SPEED = 12; // 提高联机模式速度（原值 6）
+const BASE_SPEED = 6; // 联机模式基础速度
 const PLAYER_TURN_SPEED = 0.25;
 const GROWTH_FACTOR = 0.8;
 
