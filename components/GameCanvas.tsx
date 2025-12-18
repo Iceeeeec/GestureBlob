@@ -88,6 +88,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const keysRef = useRef<{ [key: string]: boolean }>({});
     const mousePosRef = useRef({ x: 0, y: 0 });
     const joystickRef = useRef({ angle: 0, force: 0, active: false });
+    const lastValidAngleRef = useRef<number>(0);
 
     // Audio Refs
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -674,6 +675,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         targetAngle = Math.atan2(dy, dx);
                         throttle = 1.0;
                     }
+                }
+
+                // Update last valid angle if moving
+                if (throttle > 0) {
+                    lastValidAngleRef.current = targetAngle;
+                } else {
+                    // If stopped, keep facing the last direction
+                    targetAngle = lastValidAngleRef.current;
                 }
 
                 // 按键模式：吐孢子/分裂方向基于移动方向

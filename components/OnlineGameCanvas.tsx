@@ -87,6 +87,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   const keysPressed = useRef<Set<string>>(new Set());
   const mousePos = useRef<Point>({ x: 0, y: 0 });
   const joystickData = useRef<JoystickData>({ angle: 0, force: 0, active: false });
+  const lastValidAngleRef = useRef<number>(0);
   const pendingActionRef = useRef<'none' | 'eject' | 'split'>('none');
 
   // Audio
@@ -442,6 +443,16 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         } else {
           throttle = 0;
         }
+      }
+
+
+
+      // Update last valid angle if moving
+      if (throttle > 0) {
+        lastValidAngleRef.current = targetAngle;
+      } else {
+        // If stopped, keep facing the last direction
+        targetAngle = lastValidAngleRef.current;
       }
 
       // 按键模式：吐孢子/分裂方向基于移动方向
