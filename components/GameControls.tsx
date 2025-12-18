@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Joystick } from './Joystick';
 
 interface GameControlsProps {
@@ -9,6 +9,36 @@ interface GameControlsProps {
 }
 
 export const GameControls: React.FC<GameControlsProps> = ({ onMove, onMoveEnd, onSplit, onEject }) => {
+    const ejectIntervalRef = useRef<number | null>(null);
+    const isEjectingRef = useRef(false);
+
+    const startEject = useCallback(() => {
+        if (isEjectingRef.current) return;
+        isEjectingRef.current = true;
+        onEject(); // 立即触发一次
+        // 每 100ms 触发一次（受冷却时间限制）
+        ejectIntervalRef.current = window.setInterval(() => {
+            onEject();
+        }, 50);
+    }, [onEject]);
+
+    const stopEject = useCallback(() => {
+        isEjectingRef.current = false;
+        if (ejectIntervalRef.current !== null) {
+            clearInterval(ejectIntervalRef.current);
+            ejectIntervalRef.current = null;
+        }
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (ejectIntervalRef.current !== null) {
+                clearInterval(ejectIntervalRef.current);
+            }
+        };
+    }, []);
+
     return (
         <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-end p-8 pb-12">
             <div className="flex justify-between items-end w-full">
@@ -30,8 +60,12 @@ export const GameControls: React.FC<GameControlsProps> = ({ onMove, onMoveEnd, o
 
                     <button
                         className="w-24 h-24 rounded-full bg-rose-500/80 border-4 border-rose-400/50 shadow-lg shadow-rose-500/30 active:scale-95 transition-transform flex flex-col items-center justify-center -mt-8"
-                        onTouchStart={(e) => { e.preventDefault(); onEject(); }}
-                        onClick={onEject}
+                        onTouchStart={(e) => { e.preventDefault(); startEject(); }}
+                        onTouchEnd={stopEject}
+                        onTouchCancel={stopEject}
+                        onMouseDown={startEject}
+                        onMouseUp={stopEject}
+                        onMouseLeave={stopEject}
                     >
                         <span className="text-3xl">🖐️</span>
                         <span className="text-xs font-bold text-white uppercase mt-1">Eject</span>

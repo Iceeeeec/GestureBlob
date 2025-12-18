@@ -17,7 +17,7 @@ export const BOT_VIEW_DISTANCE = 400; // How far bots can "see"
 export const SPORE_RADIUS = 10;
 export const SPORE_SPEED = 18;
 export const MIN_EJECT_RADIUS = 35; // Must be at least this big to eject
-export const EJECT_COOLDOWN_MS = 150;
+export const EJECT_COOLDOWN_MS = 80; // 降低吐孢子冷却（原值 150）
 export const GESTURE_HOLD_THRESHOLD_MS = 120; // Time to hold open hand before ejecting (Anti-mistouch)
 export const FOOD_FRICTION = 0.94; // Spores slide and slow down
 
