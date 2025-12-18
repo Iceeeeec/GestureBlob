@@ -8,9 +8,10 @@ import { translations } from './i18n';
 
 interface AppProps {
   onBack?: () => void;
+  defaultControlMode?: 'gesture' | 'button';
 }
 
-export default function App({ onBack }: AppProps) {
+export default function App({ onBack, defaultControlMode = 'gesture' }: AppProps) {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.LOADING_MODEL);
@@ -20,6 +21,7 @@ export default function App({ onBack }: AppProps) {
   const [rank, setRank] = useState(0);
   const [lang, setLang] = useState<Language>('zh');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [controlMode, setControlMode] = useState<'gesture' | 'button'>(defaultControlMode);
 
   const t = translations[lang];
 
@@ -145,6 +147,14 @@ export default function App({ onBack }: AppProps) {
             )}
             <span className="hidden sm:block"><Logo /></span>
             <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full">单人模式</span>
+
+            {/* Mode Toggle */}
+            <button
+              onClick={() => setControlMode(prev => prev === 'gesture' ? 'button' : 'gesture')}
+              className="ml-2 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold transition-colors flex items-center gap-1"
+            >
+              <span>{controlMode === 'gesture' ? '✋ Gesture' : '🕹️ Button'}</span>
+            </button>
           </div>
 
           <nav className="flex gap-2 items-center">
@@ -252,6 +262,7 @@ export default function App({ onBack }: AppProps) {
             onLeaderboardUpdate={handleLeaderboardUpdate}
             gameStatus={gameStatus}
             lang={lang}
+            controlMode={controlMode}
           />
         </div>
       </main>

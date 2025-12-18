@@ -13,6 +13,7 @@ export class Room {
   public players: Map<string, RoomPlayer> = new Map();
   public status: 'waiting' | 'playing' | 'finished' = 'waiting';
   public hostId: string = '';
+  public controlMode: 'gesture' | 'button' = 'gesture';
 
   private io: Server;
   private engine: GameEngine | null = null;
@@ -24,11 +25,12 @@ export class Room {
   private gameDuration: number;
   private remainingTime: number;
 
-  constructor(io: Server, code: string, gameDuration?: number) {
+  constructor(io: Server, code: string, gameDuration?: number, controlMode?: 'gesture' | 'button') {
     this.io = io;
     this.code = code;
     this.gameDuration = gameDuration || DEFAULT_GAME_DURATION;
     this.remainingTime = this.gameDuration;
+    this.controlMode = controlMode || 'gesture';
   }
 
   addPlayer(socket: Socket, name: string): boolean {
@@ -251,7 +253,8 @@ export class Room {
       code: this.code,
       players: Array.from(this.players.values()),
       status: this.status,
-      hostId: this.hostId
+      hostId: this.hostId,
+      controlMode: this.controlMode
     };
   }
 

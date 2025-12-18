@@ -20,7 +20,7 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 export interface SocketCallbacks {
   onConnectionChange?: (status: ConnectionStatus) => void;
   onRoomCreated?: (roomCode: string, playerId: string) => void;
-  onRoomJoined?: (roomCode: string, playerId: string, players: RoomPlayer[]) => void;
+  onRoomJoined?: (roomCode: string, playerId: string, players: RoomPlayer[], controlMode: 'gesture' | 'button') => void;
   onPlayerJoined?: (player: RoomPlayer) => void;
   onPlayerLeft?: (playerId: string) => void;
   onGameStarting?: (countdown: number) => void;
@@ -113,7 +113,7 @@ class GameSocket {
         this.callbacks.onRoomCreated?.(msg.roomCode, msg.playerId);
         break;
       case 'room_joined':
-        this.callbacks.onRoomJoined?.(msg.roomCode, msg.playerId, msg.players);
+        this.callbacks.onRoomJoined?.(msg.roomCode, msg.playerId, msg.players, msg.controlMode);
         break;
       case 'player_joined':
         this.callbacks.onPlayerJoined?.(msg.player);
@@ -191,8 +191,8 @@ class GameSocket {
   }
 
   // 公开 API
-  createRoom(playerName: string, gameDuration?: number): void {
-    this.send({ type: 'create_room', playerName, gameDuration });
+  createRoom(playerName: string, gameDuration?: number, controlMode?: 'gesture' | 'button'): void {
+    this.send({ type: 'create_room', playerName, gameDuration, controlMode });
   }
 
   joinRoom(roomCode: string, playerName: string): void {

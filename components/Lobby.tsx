@@ -6,7 +6,7 @@ import { translations } from '../i18n';
 
 interface LobbyProps {
   lang: Language;
-  onGameStart: (playerId: string, roomCode: string, isHost: boolean, playerName: string) => void;
+  onGameStart: (playerId: string, roomCode: string, isHost: boolean, playerName: string, controlMode: 'gesture' | 'button') => void;
   // 用于从结算界面返回房间
   initialRoomState?: {
     roomCode: string;
@@ -36,12 +36,19 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [gameDuration, setGameDuration] = useState(300); // 默认 5 分钟
+  const [controlMode, setControlMode] = useState<'gesture' | 'button'>('gesture');
 
   // 用 ref 保存最新值，供回调使用
   const playerIdRef = React.useRef('');
   const roomCodeRef = React.useRef('');
   const playerNameRef = React.useRef('');
   const isHostRef = React.useRef(false);
+  const controlModeRef = React.useRef<'gesture' | 'button'>('gesture');
+
+  // 同步 controlMode state 到 ref，确保回调中使用最新值
+  React.useEffect(() => {
+    controlModeRef.current = controlMode;
+  }, [controlMode]);
 
   const t = translations[lang];
 
@@ -86,11 +93,13 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
         playerIdRef.current = id;
         setIsHost(true);
         isHostRef.current = true;
+        // Host uses the selected mode (from ref to avoid stale closure)
+        // controlModeRef is already in sync via useEffect
         setPlayers([{ id, name: playerNameRef.current, isHost: true, isReady: false }]);
         setView('room');
         setError('');
       },
-      onRoomJoined: (code, id, playerList) => {
+      onRoomJoined: (code, id, playerList, mode) => {
         setRoomCode(code);
         setPlayerId(id);
         roomCodeRef.current = code;
@@ -100,6 +109,8 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
         const amIHost = me?.isHost ?? false;
         setIsHost(amIHost);
         isHostRef.current = amIHost;
+        // Joiner uses the room mode
+        controlModeRef.current = mode;
         setPlayers(playerList);
         setView('room');
         setError('');
@@ -123,7 +134,7 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
       },
       onGameStarted: () => {
         setCountdown(null);
-        onGameStart(playerIdRef.current, roomCodeRef.current, isHostRef.current, playerNameRef.current);
+        onGameStart(playerIdRef.current, roomCodeRef.current, isHostRef.current, playerNameRef.current, controlModeRef.current);
       },
       onError: (msg) => {
         setError(msg);
@@ -143,7 +154,7 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
     }
     setError('');
     playerNameRef.current = playerName.trim();
-    gameSocket.createRoom(playerName.trim(), gameDuration);
+    gameSocket.createRoom(playerName.trim(), gameDuration, controlMode);
   };
 
   const handleJoinRoom = () => {
@@ -254,15 +265,45 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
             <button
               key={option.value}
               onClick={() => setGameDuration(option.value)}
-              className={`px-4 py-3 rounded-xl font-medium transition-all ${
-                gameDuration === option.value
-                  ? 'bg-cyan-500 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
+              className={`px-4 py-3 rounded-xl font-medium transition-all ${gameDuration === option.value
+                ? 'bg-cyan-500 text-white'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
             >
               {option.label[lang]}
             </button>
           ))}
+        </div>
+      </div>
+
+
+
+      {/* 控制模式选择 */}
+      <div>
+        <label className="block text-sm font-medium text-slate-400 mb-2">
+          {lang === 'zh' ? '控制模式' : 'Control Mode'}
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setControlMode('gesture')}
+            className={`px-4 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${controlMode === 'gesture'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+          >
+            <span>✋</span>
+            {lang === 'zh' ? '手势控制' : 'Gesture'}
+          </button>
+          <button
+            onClick={() => setControlMode('button')}
+            className={`px-4 py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 ${controlMode === 'button'
+              ? 'bg-emerald-500 text-white'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+          >
+            <span>🕹️</span>
+            {lang === 'zh' ? '按键控制' : 'Buttons'}
+          </button>
         </div>
       </div>
 
@@ -272,7 +313,7 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
       >
         {lang === 'zh' ? '创建房间' : 'Create'}
       </button>
-    </div>
+    </div >
   );
 
   const renderJoin = () => (
@@ -340,9 +381,8 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
           {players.map((player) => (
             <div
               key={player.id}
-              className={`flex items-center justify-between p-3 rounded-lg ${
-                player.id === playerId ? 'bg-cyan-500/20 border border-cyan-500/30' : 'bg-slate-700/50'
-              }`}
+              className={`flex items-center justify-between p-3 rounded-lg ${player.id === playerId ? 'bg-cyan-500/20 border border-cyan-500/30' : 'bg-slate-700/50'
+                }`}
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center text-white font-bold">
@@ -416,17 +456,15 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
 
         {/* Connection Status */}
         <div className="mt-4 text-center">
-          <span className={`inline-flex items-center gap-2 text-xs ${
-            connectionStatus === 'connected' ? 'text-green-400' :
+          <span className={`inline-flex items-center gap-2 text-xs ${connectionStatus === 'connected' ? 'text-green-400' :
             connectionStatus === 'connecting' ? 'text-yellow-400' : 'text-rose-400'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-green-400' :
+            }`}>
+            <span className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-400' :
               connectionStatus === 'connecting' ? 'bg-yellow-400 animate-pulse' : 'bg-rose-400'
-            }`}></span>
+              }`}></span>
             {connectionStatus === 'connected' ? (lang === 'zh' ? '已连接' : 'Connected') :
-             connectionStatus === 'connecting' ? (lang === 'zh' ? '连接中' : 'Connecting') :
-             (lang === 'zh' ? '未连接' : 'Disconnected')}
+              connectionStatus === 'connecting' ? (lang === 'zh' ? '连接中' : 'Connecting') :
+                (lang === 'zh' ? '未连接' : 'Disconnected')}
           </span>
         </div>
       </div>

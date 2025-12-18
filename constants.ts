@@ -31,7 +31,7 @@ export const MERGE_OVERLAP_RATIO = 0.1; // Merge happens when distance < (r1+r2)
 export const SELF_COLLISION_PUSH = 0.5; // Force to push overlapping player cells apart
 
 // Physics
-export const BASE_SPEED = 6;
+export const BASE_SPEED = 2; // 降低整体移动速度（原值 6）
 export const MOVEMENT_SMOOTHING = 0.85; // High value = Very responsive (Palm is stable, so we can reduce lag)
 export const INPUT_MAX_SPEED_DISTANCE = 60; // Pixels from center to reach max speed (Lower = more sensitive)
 export const SPEED_DECAY_FACTOR = 0.5; // How much speed is lost as you grow
@@ -43,7 +43,7 @@ export const COLOR_PLAYER_CORE = '#22d3ee'; // Cyan 400
 export const COLOR_PLAYER_BORDER = '#0891b2'; // Cyan 600
 export const COLOR_BOT_BORDER_DARKEN = 0.8; // Multiplier
 export const COLOR_GRID = 'rgba(255, 255, 255, 0.1)';
-export const COLOR_PARTICLE = '#facc15'; 
+export const COLOR_PARTICLE = '#facc15';
 
 // Random colors for food & bots
 export const FOOD_COLORS = [

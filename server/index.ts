@@ -53,7 +53,7 @@ io.on('connection', (socket) => {
         }
 
         const code = generateRoomCode();
-        const room = new Room(io, code, msg.gameDuration);
+        const room = new Room(io, code, msg.gameDuration, msg.controlMode);
 
         if (room.addPlayer(socket, msg.playerName)) {
           rooms.set(code, room);
@@ -98,7 +98,8 @@ io.on('connection', (socket) => {
             type: 'room_joined',
             roomCode: room.code,
             playerId: socket.id,
-            players: Array.from(room.players.values())
+            players: Array.from(room.players.values()),
+            controlMode: room.controlMode
           } as ServerMessage);
 
           // 通知房间其他人
@@ -126,7 +127,8 @@ io.on('connection', (socket) => {
               type: 'room_joined',
               roomCode: room.code,
               playerId: socket.id,
-              players: Array.from(room.players.values())
+              players: Array.from(room.players.values()),
+              controlMode: room.controlMode
             } as ServerMessage);
             console.log(`Player ${socket.id} rejoined room ${room.code}`);
           }

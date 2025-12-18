@@ -4,6 +4,7 @@ import { GameStatus, Language } from '../types';
 import { translations } from '../i18n';
 import { gameSocket } from '../network/socket';
 import { GameStateSnapshot, PlayerInput, BlobEntity, FoodEntity } from '../network/protocol';
+import { GameControls } from './GameControls';
 
 // 常量
 const WORLD_WIDTH = 3000;
@@ -25,6 +26,7 @@ interface OnlineGameCanvasProps {
   gameStatus: GameStatus;
   lang: Language;
   onGameOver?: (winner: string) => void;
+  controlMode: 'gesture' | 'button';
 }
 
 interface Camera {
@@ -36,6 +38,13 @@ interface Camera {
 interface Point {
   x: number;
   y: number;
+  scale?: number;
+}
+
+interface JoystickData {
+  angle: number;
+  force: number;
+  active: boolean;
 }
 
 export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
@@ -45,7 +54,8 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   onLeaderboardUpdate,
   gameStatus,
   lang,
-  onGameOver
+  onGameOver,
+  controlMode
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -73,12 +83,11 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   const lastInputSendTime = useRef<number>(0);
   const INPUT_SEND_INTERVAL = 50; // 每 50ms 发送一次输入（20fps）
 
-  // 键盘/触摸输入状态
-  const keysRef = useRef<Set<string>>(new Set());
-  const joystickRef = useRef<{ active: boolean; dx: number; dy: number }>({ active: false, dx: 0, dy: 0 });
-  const joystickStartRef = useRef<Point>({ x: 0, y: 0 });
-  const keyboardSplitRef = useRef<boolean>(false);
-  const keyboardEjectRef = useRef<boolean>(false);
+  // Button Mode Refs
+  const keysPressed = useRef<Set<string>>(new Set());
+  const mousePos = useRef<Point>({ x: 0, y: 0 });
+  const joystickData = useRef<JoystickData>({ angle: 0, force: 0, active: false });
+  const pendingActionRef = useRef<'none' | 'eject' | 'split'>('none');
 
   // Audio
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -142,9 +151,63 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     osc.stop(ctx.currentTime + 0.15);
   };
 
-  // 初始化 MediaPipe
+  // 键盘和鼠标监听 (Button Mode)
   useEffect(() => {
-    if (handLandmarkerRef.current || initInProgress.current) return;
+    if (controlMode === 'gesture') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysPressed.current.add(e.code);
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysPressed.current.delete(e.code);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        mousePos.current = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [controlMode]);
+
+  // 初始化 MediaPipe (Gesture Mode Only)
+  useEffect(() => {
+    if (controlMode === 'button') {
+      // 如果切换到按键模式,停止摄像头
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+      // 按键模式不需要加载模型,直接进入游戏
+      if (gameStatus !== GameStatus.PLAYING) {
+        onStatusChange(GameStatus.PLAYING);
+        initAudio();
+      }
+      return;
+    }
+
+    if (handLandmarkerRef.current || initInProgress.current) {
+      // 如果已经初始化了 AI，但摄像头没开（比如从按键模式切回来），重新开启摄像头
+      if (handLandmarkerRef.current && (!videoRef.current || !videoRef.current.srcObject)) {
+        startCamera();
+      }
+      return;
+    }
 
     const initMediaPipe = async () => {
       initInProgress.current = true;
@@ -174,8 +237,19 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     initMediaPipe();
 
     return () => {
+      // Cleanup handled in separate effect
+    };
+  }, [controlMode]); // 依赖 controlMode
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       if (audioCtxRef.current) audioCtxRef.current.close();
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
@@ -227,8 +301,6 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         prevMassRef.current = mass;
 
         onScoreUpdate(mass);
-
-        // 不再自动设置 GAME_OVER，让玩家可以观战和重生
       }
     };
 
@@ -250,27 +322,6 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       onGameOver: handleGameOver
     });
   }, [playerId]);
-
-  // 键盘控制
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      keysRef.current.add(key);
-      if (key === 'j') keyboardSplitRef.current = true;
-      if (key === 'k') keyboardEjectRef.current = true;
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keysRef.current.delete(e.key.toLowerCase());
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
 
   // 手势检测辅助
   const isFingerExtended = (landmarks: NormalizedLandmark[], tipIdx: number, pipIdx: number, wristIdx: number) => {
@@ -306,7 +357,13 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     if (gameStatus === GameStatus.PLAYING || gameStatus === GameStatus.GAME_OVER) {
       requestRef.current = requestAnimationFrame(animate);
     }
-    if (!canvasRef.current || !videoRef.current || !handLandmarkerRef.current) return;
+
+    // In button mode, we don't need video or handLandmarker
+    if (controlMode === 'gesture') {
+      if (!canvasRef.current || !videoRef.current || !handLandmarkerRef.current) return;
+    } else {
+      if (!canvasRef.current) return;
+    }
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -323,110 +380,110 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     let hasHand = false;
     let gestureType: 'NONE' | 'EJECT' | 'SPLIT' = 'NONE';
 
-    try {
-      const results = handLandmarkerRef.current.detectForVideo(videoRef.current, startTimeMs);
-      if (results.landmarks && results.landmarks.length > 0) {
-        hasHand = true;
-        const landmarks = results.landmarks[0];
-        const palmCenter = landmarks[9];
+    if (controlMode === 'gesture') {
+      try {
+        const results = handLandmarkerRef.current!.detectForVideo(videoRef.current!, startTimeMs);
+        if (results.landmarks && results.landmarks.length > 0) {
+          hasHand = true;
+          const landmarks = results.landmarks[0];
+          const palmCenter = landmarks[9];
 
-        const rawX = (1 - palmCenter.x) * cw;
-        const rawY = palmCenter.y * ch;
-        lastFingerPosRef.current = {
-          x: lastFingerPosRef.current.x + (rawX - lastFingerPosRef.current.x) * MOVEMENT_SMOOTHING,
-          y: lastFingerPosRef.current.y + (rawY - lastFingerPosRef.current.y) * MOVEMENT_SMOOTHING
-        };
+          const rawX = (1 - palmCenter.x) * cw;
+          const rawY = palmCenter.y * ch;
+          lastFingerPosRef.current = {
+            x: lastFingerPosRef.current.x + (rawX - lastFingerPosRef.current.x) * MOVEMENT_SMOOTHING,
+            y: lastFingerPosRef.current.y + (rawY - lastFingerPosRef.current.y) * MOVEMENT_SMOOTHING
+          };
 
-        // 手势检测
-        const indexExt = isFingerExtended(landmarks, 8, 6, 0);
-        const midExt = isFingerExtended(landmarks, 12, 10, 0);
-        const ringExt = isFingerExtended(landmarks, 16, 14, 0);
-        const pinkyExt = isFingerExtended(landmarks, 20, 18, 0);
+          // 手势检测
+          const indexExt = isFingerExtended(landmarks, 8, 6, 0);
+          const midExt = isFingerExtended(landmarks, 12, 10, 0);
+          const ringExt = isFingerExtended(landmarks, 16, 14, 0);
+          const pinkyExt = isFingerExtended(landmarks, 20, 18, 0);
 
-        if (indexExt && midExt && !ringExt && !pinkyExt) {
-          gestureType = 'SPLIT';
-        } else if (midExt && ringExt && pinkyExt) {
-          gestureType = 'EJECT';
+          if (indexExt && midExt && !ringExt && !pinkyExt) {
+            gestureType = 'SPLIT';
+          } else if (midExt && ringExt && pinkyExt) {
+            gestureType = 'EJECT';
+          }
+
+          const cx = cw / 2;
+          const cy = ch / 2;
+          const dx = lastFingerPosRef.current.x - cx;
+          const dy = lastFingerPosRef.current.y - cy;
+          const dist = Math.hypot(dx, dy);
+          throttle = Math.min(dist / INPUT_MAX_SPEED_DISTANCE, 1.0);
+          targetAngle = Math.atan2(dy, dx);
         }
+      } catch (e) { }
+    } else {
+      // Button Mode Input
+      let dx = 0;
+      let dy = 0;
 
-        const cx = cw / 2;
-        const cy = ch / 2;
-        const dx = lastFingerPosRef.current.x - cx;
-        const dy = lastFingerPosRef.current.y - cy;
-        const dist = Math.hypot(dx, dy);
-        throttle = Math.min(dist / INPUT_MAX_SPEED_DISTANCE, 1.0);
-        targetAngle = Math.atan2(dy, dx);
-      }
-    } catch (e) { }
+      // Keyboard input
+      if (keysPressed.current.has('KeyW') || keysPressed.current.has('ArrowUp')) dy -= 1;
+      if (keysPressed.current.has('KeyS') || keysPressed.current.has('ArrowDown')) dy += 1;
+      if (keysPressed.current.has('KeyA') || keysPressed.current.has('ArrowLeft')) dx -= 1;
+      if (keysPressed.current.has('KeyD') || keysPressed.current.has('ArrowRight')) dx += 1;
 
-    // 如果没有检测到手势，使用键盘/摇杆输入
-    if (!hasHand) {
-      let kbDx = 0;
-      let kbDy = 0;
-
-      // WASD 或 方向键
-      if (keysRef.current.has('w') || keysRef.current.has('arrowup')) kbDy -= 1;
-      if (keysRef.current.has('s') || keysRef.current.has('arrowdown')) kbDy += 1;
-      if (keysRef.current.has('a') || keysRef.current.has('arrowleft')) kbDx -= 1;
-      if (keysRef.current.has('d') || keysRef.current.has('arrowright')) kbDx += 1;
-
-      // 触摸摇杆
-      if (joystickRef.current.active) {
-        kbDx = joystickRef.current.dx;
-        kbDy = joystickRef.current.dy;
-      }
-
-      const kbDist = Math.hypot(kbDx, kbDy);
-      if (kbDist > 0.1) {
-        // 键盘控制使用全速
-        throttle = Math.min(kbDist, 1.0);
-        targetAngle = Math.atan2(kbDy, kbDx);
-        // 更新 lastFingerPosRef 用于分裂/吐孢子方向
-        lastFingerPosRef.current = {
-          x: cw / 2 + Math.cos(targetAngle) * 100,
-          y: ch / 2 + Math.sin(targetAngle) * 100
-        };
+      // Joystick input (override keyboard if active)
+      if (joystickData.current.active) {
+        const angle = joystickData.current.angle;
+        const force = joystickData.current.force;
+        dx = Math.cos(angle) * force;
+        dy = Math.sin(angle) * force;
+        throttle = Math.min(force, 1.0);
+        targetAngle = angle;
+      } else {
+        if (dx !== 0 || dy !== 0) {
+          targetAngle = Math.atan2(dy, dx);
+          throttle = 1.0;
+        } else {
+          throttle = 0;
+        }
       }
 
-      // 键盘分裂/吐孢子
-      if (keyboardSplitRef.current) gestureType = 'SPLIT';
-      if (keyboardEjectRef.current) gestureType = 'EJECT';
+      // 按键模式：吐孢子/分裂方向基于移动方向
+      const cx = cw / 2;
+      const cy = ch / 2;
+      lastFingerPosRef.current = {
+        x: cx + Math.cos(targetAngle) * 200,
+        y: cy + Math.sin(targetAngle) * 200
+      };
+
+      // Button actions (Keyboard)
+      if (keysPressed.current.has('Space')) gestureType = 'SPLIT';
+      if (keysPressed.current.has('KeyE')) gestureType = 'EJECT';
     }
 
     // 处理动作
     const now = Date.now();
     let action: 'none' | 'eject' | 'split' = 'none';
 
-    if (gestureType !== 'NONE') {
+    // 1. Check pending actions from GameControls (Touch)
+    if (pendingActionRef.current !== 'none') {
+      action = pendingActionRef.current;
+      pendingActionRef.current = 'none'; // Consume
+      // Reset cooldowns to avoid double trigger if held
+      lastEjectTimeRef.current = now;
+      lastSplitTimeRef.current = now;
+    }
+    // 2. Check gestures / keyboard
+    else if (gestureType !== 'NONE') {
       if (gestureHoldStartRef.current === 0) {
         gestureHoldStartRef.current = now;
       } else if (now - gestureHoldStartRef.current > GESTURE_HOLD_THRESHOLD_MS) {
         if (gestureType === 'EJECT' && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
           action = 'eject';
           lastEjectTimeRef.current = now;
-          keyboardEjectRef.current = false;
         } else if (gestureType === 'SPLIT' && now - lastSplitTimeRef.current > 500) {
           action = 'split';
           lastSplitTimeRef.current = now;
-          keyboardSplitRef.current = false;
         }
       }
     } else {
       gestureHoldStartRef.current = 0;
-    }
-
-    // 键盘按下立即触发（无需 hold）
-    if (!hasHand) {
-      if (keyboardSplitRef.current && now - lastSplitTimeRef.current > 500) {
-        action = 'split';
-        lastSplitTimeRef.current = now;
-        keyboardSplitRef.current = false;
-      }
-      if (keyboardEjectRef.current && now - lastEjectTimeRef.current > EJECT_COOLDOWN_MS) {
-        action = 'eject';
-        lastEjectTimeRef.current = now;
-        keyboardEjectRef.current = false;
-      }
     }
 
     // 发送输入到服务器（节流：每 50ms 一次，或有动作时立即发送）
@@ -454,14 +511,20 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     // --- 2. 渲染 ---
     const state = gameStateRef.current;
 
-    // 绘制视频背景
-    ctx.save();
-    ctx.translate(cw, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(videoRef.current, 0, 0, cw, ch);
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, cw, ch);
-    ctx.restore();
+    // 绘制背景
+    if (controlMode === 'gesture' && videoRef.current && videoRef.current.readyState >= 2) {
+      ctx.save();
+      ctx.translate(cw, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoRef.current, 0, 0, cw, ch);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.restore();
+    } else {
+      // Button mode background
+      ctx.fillStyle = '#0f172a'; // slate-900
+      ctx.fillRect(0, 0, cw, ch);
+    }
 
     if (!state) return;
 
@@ -537,8 +600,8 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       });
     });
 
-    // 绘制控制线
-    if (hasHand) {
+    // 绘制控制线 (Gesture Mode)
+    if (controlMode === 'gesture' && hasHand) {
       const fPos = lastFingerPosRef.current;
       const screenCenter = { x: cw / 2, y: ch / 2 };
 
@@ -643,47 +706,6 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     };
   }, [gameStatus]);
 
-  // 触摸处理
-  const handleTouchStart = (e: React.TouchEvent) => {
-    initAudio();
-    const touch = e.touches[0];
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = touch.clientX - rect.left;
-    // 左半屏作为摇杆区域
-    if (x < rect.width / 2) {
-      joystickStartRef.current = { x: touch.clientX, y: touch.clientY };
-      joystickRef.current = { active: true, dx: 0, dy: 0 };
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!joystickRef.current.active) return;
-    const touch = e.touches[0];
-    const maxDist = 50;
-    let dx = (touch.clientX - joystickStartRef.current.x) / maxDist;
-    let dy = (touch.clientY - joystickStartRef.current.y) / maxDist;
-    const dist = Math.hypot(dx, dy);
-    if (dist > 1) {
-      dx /= dist;
-      dy /= dist;
-    }
-    joystickRef.current.dx = dx;
-    joystickRef.current.dy = dy;
-  };
-
-  const handleTouchEnd = () => {
-    joystickRef.current = { active: false, dx: 0, dy: 0 };
-  };
-
-  const handleSplitButton = () => {
-    keyboardSplitRef.current = true;
-  };
-
-  const handleEjectButton = () => {
-    keyboardEjectRef.current = true;
-  };
-
   const t = translations[lang];
 
   return (
@@ -695,34 +717,25 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         height={720}
         className="w-full h-full object-cover"
         onClick={initAudio}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchStart={initAudio}
       />
 
-      {/* 手机端操作按钮 */}
-      <div className="absolute bottom-4 right-4 flex gap-3 sm:hidden">
-        <button
-          onTouchStart={handleSplitButton}
-          className="w-16 h-16 bg-yellow-500/80 rounded-full text-white font-bold text-xl shadow-lg active:scale-90 transition-transform"
-        >
-          J
-        </button>
-        <button
-          onTouchStart={handleEjectButton}
-          className="w-16 h-16 bg-rose-500/80 rounded-full text-white font-bold text-xl shadow-lg active:scale-90 transition-transform"
-        >
-          K
-        </button>
-      </div>
-
-      {/* 键盘操作提示 */}
-      {gameStatus === GameStatus.PLAYING && (
-        <div className="absolute bottom-4 left-4 hidden sm:block">
-          <div className="bg-black/50 backdrop-blur px-3 py-2 rounded-lg border border-white/10 text-xs text-slate-400">
-            <div>WASD: 移动 | J: 分裂 | K: 吐孢子</div>
-          </div>
-        </div>
+      {/* Game Controls (Button Mode) */}
+      {controlMode === 'button' && (
+        <GameControls
+          onMove={(angle, force) => {
+            joystickData.current = { angle, force, active: true };
+          }}
+          onMoveEnd={() => {
+            joystickData.current = { angle: 0, force: 0, active: false };
+          }}
+          onSplit={() => {
+            pendingActionRef.current = 'split';
+          }}
+          onEject={() => {
+            pendingActionRef.current = 'eject';
+          }}
+        />
       )}
 
       {errorMsg && (
@@ -738,7 +751,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
         </div>
       )}
 
-      {gameStatus === GameStatus.LOADING_MODEL && (
+      {gameStatus === GameStatus.LOADING_MODEL && controlMode === 'gesture' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-40">
           <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
           <p className="text-cyan-400 font-mono animate-pulse">{t.initializing}</p>

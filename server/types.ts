@@ -69,7 +69,7 @@ export interface GameStateSnapshot {
 
 // WebSocket 消息协议
 export type ClientMessage =
-  | { type: 'create_room'; playerName: string; gameDuration?: number }
+  | { type: 'create_room'; playerName: string; gameDuration?: number; controlMode?: 'gesture' | 'button' }
   | { type: 'join_room'; roomCode: string; playerName: string }
   | { type: 'rejoin_room'; roomCode: string }
   | { type: 'leave_room' }
@@ -80,7 +80,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'room_created'; roomCode: string; playerId: string }
-  | { type: 'room_joined'; roomCode: string; playerId: string; players: RoomPlayer[] }
+  | { type: 'room_joined'; roomCode: string; playerId: string; players: RoomPlayer[]; controlMode: 'gesture' | 'button' }
   | { type: 'player_joined'; player: RoomPlayer }
   | { type: 'player_left'; playerId: string }
   | { type: 'game_starting'; countdown: number }
@@ -105,4 +105,5 @@ export interface RoomState {
   players: RoomPlayer[];
   status: 'waiting' | 'playing' | 'finished';
   hostId: string;
+  controlMode: 'gesture' | 'button';
 }

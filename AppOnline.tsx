@@ -37,6 +37,7 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
   const [returnToRoom, setReturnToRoom] = useState(false);
   const [playerName, setPlayerName] = useState('');
   const [ping, setPing] = useState(0);
+  const [controlMode, setControlMode] = useState<'gesture' | 'button'>('gesture');
 
   const t = translations[lang];
 
@@ -85,16 +86,19 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
     setRank(myIndex !== -1 ? myIndex + 1 : 0);
   };
 
-  const handleGameStart = (id: string, code: string, host: boolean, name: string) => {
+  const handleGameStart = (id: string, code: string, host: boolean, name: string, mode: 'gesture' | 'button') => {
     setPlayerId(id);
     setRoomCode(code);
     setIsHost(host);
     setPlayerName(name);
+    setControlMode(mode);
     setView('game');
-    setGameStatus(GameStatus.LOADING_MODEL);
+    // 按键模式不需要加载 AI 模型,直接设置为 IDLE,后续会变为 PLAYING  
+    // 手势模式需要加载 MediaPipe 模型
+    setGameStatus(mode === 'button' ? GameStatus.IDLE : GameStatus.LOADING_MODEL);
     setShowResult(false);
     setReturnToRoom(false);
-    setRemainingTime(300); // 重置为默认时间，服务端会发送实际时间
+    setRemainingTime(300); // 重置为默认时间,服务端会发送实际时间
   };
 
   const handleBackToLobby = () => {
@@ -344,6 +348,7 @@ export default function AppOnline({ onBack }: AppOnlineProps) {
             gameStatus={gameStatus}
             lang={lang}
             onGameOver={setGameOverWinner}
+            controlMode={controlMode}
           />
 
           {/* Death Overlay - 玩家死亡时显示（游戏未结束时） */}
