@@ -367,9 +367,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const ejectSpore = (handScreenX: number, handScreenY: number) => {
         let ejected = false;
 
-        // Convert hand screen coordinates to world coordinates
-        const handWorldX = handScreenX + cameraRef.current.x;
-        const handWorldY = handScreenY + cameraRef.current.y;
+        // Convert hand screen coordinates to world coordinates (accounting for scale)
+        const scale = cameraRef.current.scale;
+        const handWorldX = handScreenX / scale + cameraRef.current.x;
+        const handWorldY = handScreenY / scale + cameraRef.current.y;
 
         // Iterate backwards to allow modifying array if needed (though we just modify radius)
         playerRef.current.forEach(blob => {
@@ -405,8 +406,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (currentBlobs.length >= MAX_PLAYER_BLOBS) return;
 
         // Convert hand screen coordinates to world coordinates
-        const handWorldX = handScreenX + cameraRef.current.x;
-        const handWorldY = handScreenY + cameraRef.current.y;
+        const scale = cameraRef.current.scale;
+        const handWorldX = handScreenX / scale + cameraRef.current.x;
+        const handWorldY = handScreenY / scale + cameraRef.current.y;
 
         const newBlobs: BlobEntity[] = [];
         let didSplit = false;
@@ -477,9 +479,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     const worldToScreen = (wx: number, wy: number): Point => {
+        const scale = cameraRef.current.scale;
         return {
-            x: wx - cameraRef.current.x,
-            y: wy - cameraRef.current.y
+            x: (wx - cameraRef.current.x) * scale,
+            y: (wy - cameraRef.current.y) * scale
         };
     };
 
@@ -570,7 +573,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const updateLeaderboard = () => {
         // Calculate Player Mass
         let playerMass = 0;
-        playerRef.current.forEach(b => playerMass += b.radius);
+        playerRef.current.forEach(b => playerMass += b.radius * b.radius);
+        playerMass = Math.sqrt(playerMass); // Convert back to radius-equivalent for display
 
         // Create list
         const entries: LeaderboardEntry[] = [
@@ -835,8 +839,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (playerRef.current.length === 0) {
             // If dead, keep camera roughly where we died
         } else {
-            const targetCamX = center.x - cw / 2;
-            const targetCamY = center.y - ch / 2;
+            // Calculate total player mass to determine zoom
+            const totalMass = playerRef.current.reduce((sum, b) => sum + b.radius, 0);
+            // Base scale is 1.0 at initial radius (25), decreases as player grows
+            const targetScale = Math.max(0.3, 1.0 / (1 + (totalMass - 25) / 150));
+            cameraRef.current.scale += (targetScale - cameraRef.current.scale) * 0.05;
+
+            const targetCamX = center.x - (cw / 2) / cameraRef.current.scale;
+            const targetCamY = center.y - (ch / 2) / cameraRef.current.scale;
             cameraRef.current.x += (targetCamX - cameraRef.current.x) * 0.1;
             cameraRef.current.y += (targetCamY - cameraRef.current.y) * 0.1;
         }
@@ -987,7 +997,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const sp = worldToScreen(food.x, food.y);
             if (sp.x > -50 && sp.x < cw + 50 && sp.y > -50 && sp.y < ch + 50) {
                 ctx.beginPath();
-                ctx.arc(sp.x, sp.y, food.radius, 0, Math.PI * 2);
+                ctx.arc(sp.x, sp.y, food.radius * cameraRef.current.scale, 0, Math.PI * 2);
                 ctx.fillStyle = food.color;
                 ctx.fill();
             }
@@ -999,7 +1009,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const sp = worldToScreen(p.x, p.y);
             ctx.globalAlpha = Math.max(0, p.life);
             ctx.fillStyle = p.color;
-            ctx.beginPath(); ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(sp.x, sp.y, 4 * cameraRef.current.scale, 0, Math.PI * 2); ctx.fill();
             ctx.globalAlpha = 1.0;
             if (p.life <= 0) particlesRef.current.splice(idx, 1);
         });
@@ -1062,6 +1072,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     };
 
     const drawBlob = (ctx: CanvasRenderingContext2D, blob: BlobEntity, isPlayer: boolean) => {
+        const scale = cameraRef.current.scale;
+        const scaledRadius = blob.radius * scale;
         ctx.beginPath();
         const segments = 20;
         const time = timeRef.current;
@@ -1096,7 +1108,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Shine
         if (blob.radius > 8) {
             ctx.beginPath();
-            ctx.arc(spCenter.x - blob.radius * 0.3, spCenter.y - blob.radius * 0.3, blob.radius * 0.2, 0, Math.PI * 2);
+            ctx.arc(spCenter.x - scaledRadius * 0.3, spCenter.y - scaledRadius * 0.3, scaledRadius * 0.2, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(255,255,255,0.2)';
             ctx.fill();
         }
@@ -1109,11 +1121,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const dist = Math.hypot(dx, dy);
             if (dist > 10) { // Only show if target is far enough
                 const angle = Math.atan2(dy, dx);
-                const arrowLen = blob.radius * 0.5;
+                const arrowLen = scaledRadius * 0.5;
 
                 // Arrow tip position (at edge of blob)
-                const tipX = spCenter.x + Math.cos(angle) * (blob.radius * 1.3);
-                const tipY = spCenter.y + Math.sin(angle) * (blob.radius * 1.3);
+                const tipX = spCenter.x + Math.cos(angle) * (scaledRadius * 1.3);
+                const tipY = spCenter.y + Math.sin(angle) * (scaledRadius * 1.3);
 
                 // Draw arrow triangle
                 ctx.beginPath();
@@ -1135,7 +1147,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Name
         if (blob.radius > 15) {
             ctx.fillStyle = 'white';
-            ctx.font = `bold ${Math.max(10, blob.radius * 0.4)}px "Inter"`;
+            ctx.font = `bold ${Math.max(10, scaledRadius * 0.4)}px "Inter"`;
             ctx.textAlign = 'center';
 
             const currentT = translations[langRef.current];

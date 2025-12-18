@@ -598,22 +598,24 @@ export class GameEngine {
 
     // 包含玩家
     this.players.forEach(player => {
-      const mass = player.blobs.reduce((sum, b) => sum + b.radius, 0);
+      const mass = player.blobs.reduce((sum, b) => sum + b.radius * b.radius, 0);
+      const displayMass = Math.sqrt(mass); // Convert to radius-equivalent for display
       entries.push({
         id: player.id,
         name: player.name,
-        mass: Math.floor(mass)
+        mass: Math.floor(displayMass)
       });
     });
 
     // 包含 Bot
     this.bots.forEach(bot => {
       if (!bot.isAlive) return;
-      const mass = bot.blobs.reduce((sum, b) => sum + b.radius, 0);
+      const mass = bot.blobs.reduce((sum, b) => sum + b.radius * b.radius, 0);
+      const displayMass = Math.sqrt(mass); // Convert to radius-equivalent for display
       entries.push({
         id: bot.id,
         name: bot.name,
-        mass: Math.floor(mass)
+        mass: Math.floor(displayMass)
       });
     });
 
@@ -624,7 +626,8 @@ export class GameEngine {
   getPlayerMass(playerId: string): number {
     const player = this.players.get(playerId);
     if (!player) return 0;
-    return player.blobs.reduce((sum, b) => sum + b.radius, 0);
+    const areaMass = player.blobs.reduce((sum, b) => sum + b.radius * b.radius, 0);
+    return Math.sqrt(areaMass);
   }
 
   isPlayerAlive(playerId: string): boolean {

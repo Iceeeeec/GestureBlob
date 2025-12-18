@@ -335,9 +335,10 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   };
 
   const worldToScreen = (wx: number, wy: number): Point => {
+    const scale = cameraRef.current.scale;
     return {
-      x: wx - cameraRef.current.x,
-      y: wy - cameraRef.current.y
+      x: (wx - cameraRef.current.x) * scale,
+      y: (wy - cameraRef.current.y) * scale
     };
   };
 
@@ -500,16 +501,18 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     // 发送输入到服务器（节流：每 50ms 一次，或有动作时立即发送）
     const input: PlayerInput = { angle: targetAngle, throttle, action };
 
-    // If split action, add hand world coordinates
+    // If split action, add hand world coordinates (accounting for camera scale)
     if (action === 'split') {
-      input.splitTargetX = lastFingerPosRef.current.x + cameraRef.current.x;
-      input.splitTargetY = lastFingerPosRef.current.y + cameraRef.current.y;
+      const scale = cameraRef.current.scale;
+      input.splitTargetX = lastFingerPosRef.current.x / scale + cameraRef.current.x;
+      input.splitTargetY = lastFingerPosRef.current.y / scale + cameraRef.current.y;
     }
 
-    // If eject action, add hand world coordinates
+    // If eject action, add hand world coordinates (accounting for camera scale)
     if (action === 'eject') {
-      input.ejectTargetX = lastFingerPosRef.current.x + cameraRef.current.x;
-      input.ejectTargetY = lastFingerPosRef.current.y + cameraRef.current.y;
+      const scale = cameraRef.current.scale;
+      input.ejectTargetX = lastFingerPosRef.current.x / scale + cameraRef.current.x;
+      input.ejectTargetY = lastFingerPosRef.current.y / scale + cameraRef.current.y;
     }
 
     currentInputRef.current = input;
@@ -543,8 +546,15 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
     const myPlayer = state.players.find(p => p.id === playerId);
     if (myPlayer && myPlayer.blobs.length > 0) {
       const center = getCentroid(myPlayer.blobs);
-      const targetCamX = center.x - cw / 2;
-      const targetCamY = center.y - ch / 2;
+
+      // Calculate total player mass to determine zoom
+      const totalMass = myPlayer.blobs.reduce((sum, b) => sum + b.radius, 0);
+      // Base scale is 1.0 at initial radius (25), decreases as player grows
+      const targetScale = Math.max(0.3, 1.0 / (1 + (totalMass - 25) / 150));
+      cameraRef.current.scale += (targetScale - cameraRef.current.scale) * 0.05;
+
+      const targetCamX = center.x - (cw / 2) / cameraRef.current.scale;
+      const targetCamY = center.y - (ch / 2) / cameraRef.current.scale;
       cameraRef.current.x += (targetCamX - cameraRef.current.x) * 0.1;
       cameraRef.current.y += (targetCamY - cameraRef.current.y) * 0.1;
     }
@@ -579,7 +589,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       const sp = worldToScreen(food.x, food.y);
       if (sp.x > -50 && sp.x < cw + 50 && sp.y > -50 && sp.y < ch + 50) {
         ctx.beginPath();
-        ctx.arc(sp.x, sp.y, food.radius, 0, Math.PI * 2);
+        ctx.arc(sp.x, sp.y, food.radius * cameraRef.current.scale, 0, Math.PI * 2);
         ctx.fillStyle = food.color;
         ctx.fill();
       }
@@ -656,6 +666,8 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
   };
 
   const drawBlob = (ctx: CanvasRenderingContext2D, blob: BlobEntity, isMe: boolean, playerName: string) => {
+    const scale = cameraRef.current.scale;
+    const scaledRadius = blob.radius * scale;
     ctx.beginPath();
     const segments = 20;
     const time = timeRef.current;
@@ -673,7 +685,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       }
     } else {
       const sp = worldToScreen(blob.x, blob.y);
-      ctx.arc(sp.x, sp.y, blob.radius, 0, Math.PI * 2);
+      ctx.arc(sp.x, sp.y, scaledRadius, 0, Math.PI * 2);
     }
 
     ctx.closePath();
@@ -688,7 +700,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
 
     if (blob.radius > 8) {
       ctx.beginPath();
-      ctx.arc(spCenter.x - blob.radius * 0.3, spCenter.y - blob.radius * 0.3, blob.radius * 0.2, 0, Math.PI * 2);
+      ctx.arc(spCenter.x - scaledRadius * 0.3, spCenter.y - scaledRadius * 0.3, scaledRadius * 0.2, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
       ctx.fill();
     }
@@ -701,11 +713,11 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
       const dist = Math.hypot(dx, dy);
       if (dist > 10) { // Only show if target is far enough
         const angle = Math.atan2(dy, dx);
-        const arrowLen = blob.radius * 0.5;
+        const arrowLen = scaledRadius * 0.5;
 
         // Arrow tip position (at edge of blob)
-        const tipX = spCenter.x + Math.cos(angle) * (blob.radius * 1.3);
-        const tipY = spCenter.y + Math.sin(angle) * (blob.radius * 1.3);
+        const tipX = spCenter.x + Math.cos(angle) * (scaledRadius * 1.3);
+        const tipY = spCenter.y + Math.sin(angle) * (scaledRadius * 1.3);
 
         // Draw arrow triangle
         ctx.beginPath();
@@ -726,7 +738,7 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
 
     if (blob.radius > 15) {
       ctx.fillStyle = 'white';
-      ctx.font = `bold ${Math.max(10, blob.radius * 0.4)}px "Inter"`;
+      ctx.font = `bold ${Math.max(10, scaledRadius * 0.4)}px "Inter"`;
       ctx.textAlign = 'center';
       const currentT = translations[langRef.current];
       const displayName = isMe ? currentT.you : playerName;
