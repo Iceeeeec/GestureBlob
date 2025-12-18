@@ -50,16 +50,7 @@ export const GameControls: React.FC<GameControlsProps> = ({ onMove, onMoveEnd, o
                 {/* Right: Action Buttons */}
                 <div className="flex gap-4 pointer-events-auto">
                     <button
-                        className="w-20 h-20 rounded-full bg-yellow-500/80 border-4 border-yellow-400/50 shadow-lg shadow-yellow-500/30 active:scale-95 transition-transform flex flex-col items-center justify-center"
-                        onTouchStart={(e) => { e.preventDefault(); onSplit(); }}
-                        onClick={onSplit}
-                    >
-                        <span className="text-2xl">✌️</span>
-                        <span className="text-xs font-bold text-white uppercase mt-1">Split</span>
-                    </button>
-
-                    <button
-                        className="w-24 h-24 rounded-full bg-rose-500/80 border-4 border-rose-400/50 shadow-lg shadow-rose-500/30 active:scale-95 transition-transform flex flex-col items-center justify-center -mt-8"
+                        className="w-24 h-24 rounded-full bg-rose-500/80 border-4 border-rose-400/50 shadow-lg shadow-rose-500/30 active:scale-95 transition-transform flex flex-col items-center justify-center -mt-4"
                         onTouchStart={(e) => { e.preventDefault(); startEject(); }}
                         onTouchEnd={stopEject}
                         onTouchCancel={stopEject}
@@ -69,6 +60,15 @@ export const GameControls: React.FC<GameControlsProps> = ({ onMove, onMoveEnd, o
                     >
                         <span className="text-3xl">🖐️</span>
                         <span className="text-xs font-bold text-white uppercase mt-1">Eject</span>
+                    </button>
+
+                    <button
+                        className="w-28 h-28 rounded-full bg-yellow-500/80 border-4 border-yellow-400/50 shadow-lg shadow-yellow-500/30 active:scale-95 transition-transform flex flex-col items-center justify-center -mt-8"
+                        onTouchStart={(e) => { e.preventDefault(); onSplit(); }}
+                        onClick={onSplit}
+                    >
+                        <span className="text-3xl">✌️</span>
+                        <span className="text-xs font-bold text-white uppercase mt-1">Split</span>
                     </button>
                 </div>
             </div>
