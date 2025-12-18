@@ -1092,6 +1092,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.fill();
         }
 
+        // Direction Arrow (only for player blobs with movement)
+        if (isPlayer && blob.radius > 15) {
+            const speed = Math.hypot(blob.vx, blob.vy);
+            if (speed > 0.1) {
+                const angle = Math.atan2(blob.vy, blob.vx);
+                const arrowLen = blob.radius * 0.5;
+
+                // Arrow tip position (at edge of blob)
+                const tipX = spCenter.x + Math.cos(angle) * (blob.radius * 1.3);
+                const tipY = spCenter.y + Math.sin(angle) * (blob.radius * 1.3);
+
+                // Draw arrow triangle
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(
+                    tipX - Math.cos(angle - Math.PI / 5) * arrowLen * 0.5,
+                    tipY - Math.sin(angle - Math.PI / 5) * arrowLen * 0.5
+                );
+                ctx.lineTo(
+                    tipX - Math.cos(angle + Math.PI / 5) * arrowLen * 0.5,
+                    tipY - Math.sin(angle + Math.PI / 5) * arrowLen * 0.5
+                );
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.fill();
+            }
+        }
+
         // Name
         if (blob.radius > 15) {
             ctx.fillStyle = 'white';
