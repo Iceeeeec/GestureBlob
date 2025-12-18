@@ -228,19 +228,11 @@ export default function App({ onBack, defaultControlMode = 'gesture' }: AppProps
             )}
           </button>
 
-          {/* 分数显示 - 右下角 */}
-          <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 z-30">
+          {/* 总质量 - 右上角 */}
+          <div className="absolute top-2 sm:top-4 right-2 sm:right-4 z-30">
             <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 border border-white/10">
               <div className="text-[10px] sm:text-xs text-white/60 uppercase">{t.totalMass}</div>
               <div className="text-lg sm:text-2xl font-bold text-white tabular-nums">{Math.floor(score)}</div>
-            </div>
-          </div>
-
-          {/* 最高分 - 左下角 */}
-          <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-30">
-            <div className="bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 border border-white/10">
-              <div className="text-[10px] sm:text-xs text-white/60 uppercase">{t.record}</div>
-              <div className="text-lg sm:text-2xl font-bold text-cyan-400 tabular-nums">{Math.floor(highScore)}</div>
             </div>
           </div>
 

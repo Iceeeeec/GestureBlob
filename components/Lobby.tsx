@@ -205,7 +205,14 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
 
       <div className="grid grid-cols-2 gap-4">
         <button
-          onClick={() => setView('create')}
+          onClick={() => {
+            if (!playerName.trim()) {
+              setError(lang === 'zh' ? '请先输入昵称' : 'Please enter a name first');
+              return;
+            }
+            setError('');
+            setView('create');
+          }}
           disabled={connectionStatus !== 'connected'}
           className="px-6 py-4 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all transform hover:scale-105 active:scale-95"
         >
@@ -213,7 +220,14 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
           {lang === 'zh' ? '创建房间' : 'Create Room'}
         </button>
         <button
-          onClick={() => setView('join')}
+          onClick={() => {
+            if (!playerName.trim()) {
+              setError(lang === 'zh' ? '请先输入昵称' : 'Please enter a name first');
+              return;
+            }
+            setError('');
+            setView('join');
+          }}
           disabled={connectionStatus !== 'connected'}
           className="px-6 py-4 bg-purple-500 hover:bg-purple-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all transform hover:scale-105 active:scale-95"
         >
@@ -221,6 +235,12 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
           {lang === 'zh' ? '加入房间' : 'Join Room'}
         </button>
       </div>
+
+      {error && (
+        <div className="text-rose-400 text-center text-sm">
+          {error}
+        </div>
+      )}
 
       {connectionStatus === 'connecting' && (
         <div className="text-center text-slate-400">
@@ -307,6 +327,12 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
         </div>
       </div>
 
+      {error && (
+        <div className="text-rose-400 text-center text-sm">
+          {error}
+        </div>
+      )}
+
       <button
         onClick={handleCreateRoom}
         className="w-full px-6 py-4 bg-cyan-500 hover:bg-cyan-600 text-white font-bold rounded-xl transition-all"
@@ -344,6 +370,12 @@ export const Lobby: React.FC<LobbyProps> = ({ lang, onGameStart, initialRoomStat
           className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-center text-2xl font-mono tracking-widest placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
         />
       </div>
+
+      {error && (
+        <div className="text-rose-400 text-center text-sm">
+          {error}
+        </div>
+      )}
 
       <button
         onClick={handleJoinRoom}
