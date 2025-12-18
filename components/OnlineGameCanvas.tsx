@@ -684,9 +684,12 @@ export const OnlineGameCanvas: React.FC<OnlineGameCanvasProps> = ({
 
     // Direction Arrow (only for player blobs with movement)
     if (isMe && blob.radius > 15) {
-      const speed = Math.hypot(blob.vx || 0, blob.vy || 0);
-      if (speed > 0.1) {
-        const angle = Math.atan2(blob.vy || 0, blob.vx || 0);
+      // Calculate angle from blob to target position
+      const dx = lastFingerPosRef.current.x - spCenter.x;
+      const dy = lastFingerPosRef.current.y - spCenter.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 10) { // Only show if target is far enough
+        const angle = Math.atan2(dy, dx);
         const arrowLen = blob.radius * 0.5;
 
         // Arrow tip position (at edge of blob)
