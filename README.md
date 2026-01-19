@@ -1,21 +1,4 @@
 # GestureBlob
-
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" alt="GestureBlob Banner" width="100%" />
-  
-  <p align="center">
-    <h3>🖐️ Control Your Blob with Hand Gestures!</h3>
-    <br />
-    <a href="https://blob.shuwu.site/"><strong>🔴 Live Demo</strong></a>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="#-features"><strong>✨ Features</strong></a>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="#-tech-stack"><strong>🛠️ Tech Stack</strong></a>
-  </p>
-</div>
-
----
-
 ## 📖 Introduction
 
 **GestureBlob** is an innovative multiplayer web game that brings the classic "eat-and-grow" mechanic (similar to Agar.io) to the next level with **AI-powered hand gesture controls**.
